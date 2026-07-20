@@ -43,3 +43,10 @@ export async function setLibrary(library: SongMeta[]): Promise<void> {
   const store = await getStore()
   store.set('library', library)
 }
+
+/** Adds a song to the library index, replacing any existing entry with the same id. */
+export async function upsertLibraryEntry(meta: SongMeta): Promise<void> {
+  const library = await getLibrary()
+  const withoutExisting = library.filter((entry) => entry.id !== meta.id)
+  await setLibrary([...withoutExisting, meta])
+}

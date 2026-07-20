@@ -6,9 +6,12 @@ describe('App', () => {
   beforeEach(() => {
     window.skyAPI = {
       ping: vi.fn().mockResolvedValue('pong'),
-      getSettings: vi.fn(),
+      getSettings: vi.fn().mockResolvedValue({ sustainThresholdMs: 300 }),
       setSettings: vi.fn(),
-      listLibrary: vi.fn()
+      listLibrary: vi.fn(),
+      parseMidi: vi.fn(),
+      convertMidi: vi.fn(),
+      saveSong: vi.fn()
     }
   })
 
