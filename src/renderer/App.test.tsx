@@ -6,12 +6,21 @@ describe('App', () => {
   beforeEach(() => {
     window.skyAPI = {
       ping: vi.fn().mockResolvedValue('pong'),
-      getSettings: vi.fn().mockResolvedValue({ sustainThresholdMs: 300 }),
+      getSettings: vi.fn().mockResolvedValue({ sustainThresholdMs: 300, countdownSeconds: 3 }),
       setSettings: vi.fn(),
-      listLibrary: vi.fn(),
+      listLibrary: vi.fn().mockResolvedValue([]),
       parseMidi: vi.fn(),
       convertMidi: vi.fn(),
-      saveSong: vi.fn()
+      saveSong: vi.fn(),
+      loadSong: vi.fn(),
+      playbackLoad: vi.fn(),
+      playbackPlay: vi.fn(),
+      playbackPause: vi.fn(),
+      playbackStop: vi.fn(),
+      playbackSetTempo: vi.fn(),
+      playbackSetDryRun: vi.fn(),
+      playbackPanic: vi.fn(),
+      onPlaybackEvent: vi.fn().mockReturnValue(() => {})
     }
   })
 
