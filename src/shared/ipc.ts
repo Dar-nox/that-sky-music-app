@@ -18,6 +18,7 @@ export const IPC_CHANNELS = {
   playbackStop: 'playback:stop',
   playbackSetTempo: 'playback:setTempo',
   playbackSetDryRun: 'playback:setDryRun',
+  playbackSeek: 'playback:seek',
   playbackPanic: 'playback:panic',
   playbackEvent: 'playback:event'
 } as const
@@ -37,6 +38,7 @@ export interface SkyAPI {
   playbackStop(): Promise<PlaybackStatus>
   playbackSetTempo(multiplier: number): Promise<PlaybackStatus>
   playbackSetDryRun(dryRun: boolean): Promise<PlaybackStatus>
+  playbackSeek(timeMs: number): Promise<PlaybackStatus>
   playbackPanic(): Promise<PlaybackStatus>
   onPlaybackEvent(listener: (event: PlaybackEvent) => void): () => void
 }

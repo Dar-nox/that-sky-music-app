@@ -19,6 +19,7 @@ describe('App', () => {
       playbackStop: vi.fn(),
       playbackSetTempo: vi.fn(),
       playbackSetDryRun: vi.fn(),
+      playbackSeek: vi.fn(),
       playbackPanic: vi.fn(),
       onPlaybackEvent: vi.fn().mockReturnValue(() => {})
     }

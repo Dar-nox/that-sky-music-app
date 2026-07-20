@@ -33,6 +33,7 @@ export function PlayMusicMode() {
   const [activeCells, setActiveCells] = useState<Set<string>>(new Set())
   const [noteLog, setNoteLog] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [scrubMs, setScrubMs] = useState<number | null>(null)
 
   useEffect(() => {
     window.skyAPI.listLibrary().then(setLibrary).catch(() => setError('Failed to load library'))
@@ -81,6 +82,7 @@ export function PlayMusicMode() {
     setActiveCells(new Set())
     setNoteLog([])
     setCountdown(null)
+    setScrubMs(null)
     try {
       const song = await window.skyAPI.loadSong(meta.id)
       const newStatus = await window.skyAPI.playbackLoad(song, dryRun)
@@ -131,8 +133,16 @@ export function PlayMusicMode() {
     setStatus(await window.skyAPI.playbackSetDryRun(checked))
   }
 
+  async function commitSeek(): Promise<void> {
+    if (scrubMs === null) return
+    const targetMs = scrubMs
+    setScrubMs(null)
+    setActiveCells(new Set())
+    setStatus(await window.skyAPI.playbackSeek(targetMs))
+  }
+
   const selectedMeta = library.find((s) => s.id === selectedId) ?? null
-  const progressPct = status.durationMs > 0 ? Math.min(100, (status.elapsedMs / status.durationMs) * 100) : 0
+  const displayedElapsedMs = scrubMs ?? status.elapsedMs
 
   return (
     <div className="flex h-full">
@@ -173,11 +183,19 @@ export function PlayMusicMode() {
             </div>
 
             <div>
-              <div className="h-2 w-full overflow-hidden rounded bg-slate-800">
-                <div className="h-full bg-sky-500" style={{ width: `${progressPct}%` }} />
-              </div>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(status.durationMs, 1)}
+                value={Math.min(displayedElapsedMs, Math.max(status.durationMs, 1))}
+                onChange={(e) => setScrubMs(Number(e.target.value))}
+                onMouseUp={() => void commitSeek()}
+                onTouchEnd={() => void commitSeek()}
+                onKeyUp={() => void commitSeek()}
+                className="h-2 w-full cursor-pointer accent-sky-500"
+              />
               <div className="mt-1 flex justify-between text-xs text-slate-400">
-                <span>{formatMs(status.elapsedMs)}</span>
+                <span>{formatMs(displayedElapsedMs)}</span>
                 <span>{formatMs(status.durationMs)}</span>
               </div>
             </div>

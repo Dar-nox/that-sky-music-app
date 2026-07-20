@@ -100,6 +100,22 @@ export class PlaybackScheduler {
     return this.getStatus()
   }
 
+  /** Jumps to an arbitrary point in the song, whether playing, paused, or stopped. */
+  seek(timeMs: number): PlaybackStatus {
+    if (!this.song) return this.getStatus()
+
+    this.releaseAllHeld()
+    const clamped = Math.max(0, Math.min(timeMs, this.song.meta.durationMs))
+    const nextCursor = this.scheduledEvents.findIndex((event) => event.timeMs >= clamped)
+    this.cursor = nextCursor === -1 ? this.scheduledEvents.length : nextCursor
+
+    this.elapsedAtAnchorMs = clamped
+    if (this.state === 'playing') this.anchorAtMs = Date.now()
+
+    this.emitStatus()
+    return this.getStatus()
+  }
+
   getStatus(): PlaybackStatus {
     return {
       state: this.state,

@@ -22,6 +22,7 @@ const skyAPI: SkyAPI = {
   playbackStop: () => ipcRenderer.invoke(IPC_CHANNELS.playbackStop),
   playbackSetTempo: (multiplier: number) => ipcRenderer.invoke(IPC_CHANNELS.playbackSetTempo, multiplier),
   playbackSetDryRun: (dryRun: boolean) => ipcRenderer.invoke(IPC_CHANNELS.playbackSetDryRun, dryRun),
+  playbackSeek: (timeMs: number) => ipcRenderer.invoke(IPC_CHANNELS.playbackSeek, timeMs),
   playbackPanic: () => ipcRenderer.invoke(IPC_CHANNELS.playbackPanic),
   onPlaybackEvent: (listener: (event: PlaybackEvent) => void) => {
     const handler = (_event: IpcRendererEvent, payload: PlaybackEvent): void => listener(payload)

@@ -60,6 +60,10 @@ export function registerIpcHandlers(): void {
     return playbackScheduler.setDryRun(dryRun)
   })
 
+  ipcMain.handle(IPC_CHANNELS.playbackSeek, async (_event, timeMs: number) => {
+    return playbackScheduler.seek(timeMs)
+  })
+
   ipcMain.handle(IPC_CHANNELS.playbackPanic, async () => playbackScheduler.panic())
 
   playbackScheduler.onEvent((event) => {

@@ -113,4 +113,60 @@ describe('PlaybackScheduler', () => {
     vi.advanceTimersByTime(100)
     expect(scheduler.getStatus().elapsedMs).toBeCloseTo(afterChange + 200, 0)
   })
+
+  it('seeking forward skips notes before the target and only fires what remains ahead', () => {
+    const scheduler = new PlaybackScheduler()
+    const events: PlaybackEvent[] = []
+    scheduler.onEvent((e) => events.push(e))
+
+    scheduler.load(makeSong(), DEFAULT_NOTE_KEYS, 50, true)
+    scheduler.seek(200)
+    expect(scheduler.getStatus().elapsedMs).toBe(200)
+
+    scheduler.play()
+    vi.advanceTimersByTime(100)
+
+    const noteEvents = events.filter((e) => e.type === 'note')
+    expect(noteEvents.map((e) => `${e.kind}:${e.row}${e.col}`)).toEqual(['up:A2'])
+  })
+
+  it('seeking backward while playing re-fires notes from the new position', () => {
+    const scheduler = new PlaybackScheduler()
+    const events: PlaybackEvent[] = []
+    scheduler.onEvent((e) => events.push(e))
+
+    scheduler.load(makeSong(), DEFAULT_NOTE_KEYS, 50, true)
+    scheduler.play()
+    vi.advanceTimersByTime(200)
+
+    events.length = 0
+    scheduler.seek(0)
+    expect(scheduler.getStatus().elapsedMs).toBe(0)
+
+    vi.advanceTimersByTime(300)
+    const noteEvents = events.filter((e) => e.type === 'note')
+    expect(noteEvents.map((e) => `${e.kind}:${e.row}${e.col}`)).toEqual([
+      'down:A1',
+      'up:A1',
+      'down:A2',
+      'up:A2'
+    ])
+  })
+
+  it('clamps seek targets to the song bounds', () => {
+    const scheduler = new PlaybackScheduler()
+    scheduler.load(makeSong(), DEFAULT_NOTE_KEYS, 50, true)
+
+    scheduler.seek(-500)
+    expect(scheduler.getStatus().elapsedMs).toBe(0)
+
+    scheduler.seek(999999)
+    expect(scheduler.getStatus().elapsedMs).toBe(300)
+  })
+
+  it('does nothing when seeking before any song is loaded', () => {
+    const scheduler = new PlaybackScheduler()
+    expect(() => scheduler.seek(100)).not.toThrow()
+    expect(scheduler.getStatus().elapsedMs).toBe(0)
+  })
 })
