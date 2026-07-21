@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ChangeEvent, DragEvent } from 'react'
 import type { GridCol, GridRow, SongMeta } from '@shared/song'
 import type { PlaybackStatus } from '@shared/playback'
 import { DEFAULT_SETTINGS } from '@shared/settings'
@@ -34,6 +35,9 @@ export function PlayMusicMode() {
   const [noteLog, setNoteLog] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [scrubMs, setScrubMs] = useState<number | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     window.skyAPI.listLibrary().then(setLibrary).catch(() => setError('Failed to load library'))
@@ -133,6 +137,77 @@ export function PlayMusicMode() {
     setStatus(await window.skyAPI.playbackSetDryRun(checked))
   }
 
+  async function refreshLibrary(): Promise<void> {
+    try {
+      setLibrary(await window.skyAPI.listLibrary())
+    } catch {
+      setError('Failed to refresh library')
+    }
+  }
+
+  /** Imports one or more external community sheet files (Sky Studio / sky-music JSON,
+   * per CLAUDE.md §5/§7) via the file picker or drag-and-drop, normalizes + saves each
+   * through the `importSheet` IPC channel, then refreshes the library list. */
+  async function importSheetFiles(files: FileList | File[]): Promise<void> {
+    const list = Array.from(files).filter((f) => /\.(json|txt)$/i.test(f.name))
+    if (list.length === 0) {
+      setError('Only .json or .txt sheet files can be imported')
+      return
+    }
+
+    setImporting(true)
+    setError(null)
+
+    let importedCount = 0
+    let lastFailure: string | null = null
+
+    for (const file of list) {
+      try {
+        const text = await file.text()
+        await window.skyAPI.importSheet(text, file.name)
+        importedCount++
+      } catch (err) {
+        lastFailure = `${file.name}: ${err instanceof Error ? err.message : 'Import failed'}`
+      }
+    }
+
+    if (importedCount > 0) {
+      await refreshLibrary()
+    }
+    if (lastFailure) {
+      const failedCount = list.length - importedCount
+      setError(failedCount > 1 ? `${failedCount} file(s) failed to import. Last error -- ${lastFailure}` : lastFailure)
+    }
+
+    setImporting(false)
+  }
+
+  async function handleImportInputChange(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const files = event.target.files
+    if (files && files.length > 0) {
+      await importSheetFiles(files)
+    }
+    event.target.value = ''
+  }
+
+  function handleDragOver(event: DragEvent<HTMLDivElement>): void {
+    event.preventDefault()
+    setIsDragOver(true)
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLDivElement>): void {
+    event.preventDefault()
+    setIsDragOver(false)
+  }
+
+  async function handleDrop(event: DragEvent<HTMLDivElement>): Promise<void> {
+    event.preventDefault()
+    setIsDragOver(false)
+    if (event.dataTransfer.files.length > 0) {
+      await importSheetFiles(event.dataTransfer.files)
+    }
+  }
+
   async function commitSeek(): Promise<void> {
     if (scrubMs === null) return
     const targetMs = scrubMs
@@ -164,6 +239,33 @@ export function PlayMusicMode() {
             </li>
           ))}
         </ul>
+
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => void handleDrop(e)}
+          className={`mt-3 rounded border border-dashed p-3 text-center text-xs ${
+            isDragOver ? 'border-sky-400 bg-sky-900/30 text-sky-200' : 'border-slate-700 text-slate-500'
+          }`}
+        >
+          <p>Drag & drop a .json/.txt sheet here</p>
+          <p className="my-1">or</p>
+          <button
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            className="rounded bg-slate-700 px-2 py-1 text-xs font-medium text-slate-100 hover:bg-slate-600 disabled:opacity-50"
+          >
+            {importing ? 'Importing…' : 'Import sheet file'}
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,.txt"
+            multiple
+            onChange={(e) => void handleImportInputChange(e)}
+            className="hidden"
+          />
+        </div>
       </aside>
 
       <main className="flex-1 overflow-auto p-6">

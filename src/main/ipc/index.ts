@@ -7,6 +7,7 @@ import { getSettings, setSettings, getLibrary } from '../store'
 import { parseMidiFile, summarizeParsedMidi } from '../midi/parse'
 import { convertMidiToSong } from '../midi/convert'
 import { saveSong, loadSong, resolveDataFolder } from '../songFiles'
+import { importExternalSheet } from '../importAdapters'
 import { playbackScheduler } from '../scheduler/playback'
 import { getMainWindow } from '../windowRef'
 import { refreshGlobalHotkeys } from '../hotkeys'
@@ -53,6 +54,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.loadSong, async (_event, id: string) => {
     return loadSong(id)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.importSheet, async (_event, rawText: string, fileName: string) => {
+    const song = importExternalSheet(rawText, fileName)
+    await saveSong(song)
+    return song
   })
 
   ipcMain.handle(IPC_CHANNELS.playbackLoad, async (_event, song: Song, dryRun: boolean) => {
