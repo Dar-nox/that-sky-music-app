@@ -1,3 +1,5 @@
+import type { ArrangementReport } from './arranger'
+
 export type GridRow = 'A' | 'B' | 'C'
 export type GridCol = 1 | 2 | 3 | 4 | 5
 
@@ -18,6 +20,10 @@ export interface ConversionReport {
 
 export interface SongMeta {
   id: string
+  /** Which pipeline produced this song. Absent on songs saved before the Arranger existed. */
+  generator?: 'converter' | 'arranger'
+  /** Present only for Arranger output — the richer per-stage report (see @shared/arranger). */
+  arrangement?: ArrangementReport
   title: string
   artist: string
   sourceFile: string

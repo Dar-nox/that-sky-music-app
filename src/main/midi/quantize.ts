@@ -19,8 +19,10 @@ export interface QuantizedNote extends QuantizeInput {
   dropped: boolean
 }
 
-const MAJOR_SCALE_STEPS = [0, 2, 4, 5, 7, 9, 11]
+export const MAJOR_SCALE_STEPS = [0, 2, 4, 5, 7, 9, 11]
 const GRID_ROWS: GridRow[] = ['A', 'B', 'C']
+/** Scale degrees spanned by the 15-key grid, endpoints inclusive (2 octaves = 2*7 + 1). */
+export const GRID_DEGREE_SPAN = 14
 /** How far (in octaves) to try shifting a note before falling back to `outOfRangeMode`'s edge-case behavior. */
 const MAX_TRY_SHIFT_OCTAVES = 2
 
@@ -29,7 +31,10 @@ const MAX_TRY_SHIFT_OCTAVES = 2
  * rooted at `rootPc`, returning a *global* scale-degree index (7 per octave, can be
  * negative or span many octaves) plus whether the snap moved the pitch at all.
  */
-function nearestDiatonicDegree(midiPitch: number, rootPc: number): { globalDegree: number; altered: boolean } {
+export function nearestDiatonicDegree(
+  midiPitch: number,
+  rootPc: number
+): { globalDegree: number; altered: boolean } {
   const offset = midiPitch - rootPc
   const octaveIndex = Math.floor(offset / 12)
   const semitoneInOctave = offset - octaveIndex * 12
@@ -50,7 +55,7 @@ function nearestDiatonicDegree(midiPitch: number, rootPc: number): { globalDegre
   }
 }
 
-function degreeToGridPosition(relativeDegree: number): GridPosition {
+export function degreeToGridPosition(relativeDegree: number): GridPosition {
   const rowIndex = Math.floor(relativeDegree / 5)
   const col = ((relativeDegree % 5) + 1) as GridCol
   // Row A is the lowest octave (community ABC1-5 convention) — CLAUDE.md §2 flags this
