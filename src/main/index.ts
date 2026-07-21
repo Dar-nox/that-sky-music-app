@@ -1,7 +1,10 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, globalShortcut } from 'electron'
 import { join } from 'node:path'
 import { registerIpcHandlers } from './ipc'
 import { setMainWindow } from './windowRef'
+import { initActiveWindowGuard } from './keystroke/activeWindowGuard'
+import { refreshGlobalHotkeys } from './hotkeys'
+import { initTray } from './tray'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -43,6 +46,13 @@ app.whenReady().then(() => {
   registerIpcHandlers()
   createWindow()
 
+  // Safety layer + minimized-window control surfaces (CLAUDE.md §9, §11 step 6).
+  initActiveWindowGuard()
+  initTray()
+  refreshGlobalHotkeys().catch((err: unknown) => {
+    console.error('Failed to register global transport hotkeys:', err)
+  })
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -50,4 +60,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })

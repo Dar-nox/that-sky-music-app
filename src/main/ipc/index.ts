@@ -9,6 +9,7 @@ import { convertMidiToSong } from '../midi/convert'
 import { saveSong, loadSong } from '../songFiles'
 import { playbackScheduler } from '../scheduler/playback'
 import { getMainWindow } from '../windowRef'
+import { refreshGlobalHotkeys } from '../hotkeys'
 
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.ping, async () => 'pong')
@@ -17,6 +18,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.setSettings, async (_event, settings: AppSettings) => {
     await setSettings(settings)
+    // Re-register global hotkeys immediately so a live Settings change takes
+    // effect without an app restart (CLAUDE.md §8/§9).
+    await refreshGlobalHotkeys()
   })
 
   ipcMain.handle(IPC_CHANNELS.listLibrary, async () => getLibrary())
