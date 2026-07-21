@@ -8,9 +8,17 @@ files:
   - package.json
 asarUnpack:
   - resources/**
-# No custom icon yet (resources/icon.ico) — electron-builder falls back to its
-# default icon until one is added; point `win.icon` at it once it exists.
+# Both native deps (get-windows, and nut.js's libnut-win32) are N-API modules,
+# which are ABI-stable across Node/Electron and already ship a resolved
+# win32-x64 prebuilt binary from `npm install` — no Electron-specific rebuild
+# is needed. Also works around an environment-specific node-gyp bug
+# (https://github.com/nodejs/node-gyp/issues/65) triggered by this repo's
+# path containing a space, which otherwise hangs electron-builder's default
+# native rebuild step.
+npmRebuild: false
 win:
+  # Resolved relative to directories.buildResources (resources/icon.ico).
+  icon: icon.ico
   target:
     - target: nsis
       arch: [x64]
