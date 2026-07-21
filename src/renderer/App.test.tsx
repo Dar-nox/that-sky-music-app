@@ -8,6 +8,8 @@ describe('App', () => {
       ping: vi.fn().mockResolvedValue('pong'),
       getSettings: vi.fn().mockResolvedValue({ sustainThresholdMs: 300, countdownSeconds: 3 }),
       setSettings: vi.fn(),
+      pickDataFolder: vi.fn().mockResolvedValue(null),
+      openDataFolder: vi.fn(),
       listLibrary: vi.fn().mockResolvedValue([]),
       parseMidi: vi.fn(),
       convertMidi: vi.fn(),

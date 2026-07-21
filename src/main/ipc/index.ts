@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { dialog, ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ConvertOptions } from '@shared/midi'
@@ -6,7 +6,7 @@ import type { Song } from '@shared/song'
 import { getSettings, setSettings, getLibrary } from '../store'
 import { parseMidiFile, summarizeParsedMidi } from '../midi/parse'
 import { convertMidiToSong } from '../midi/convert'
-import { saveSong, loadSong } from '../songFiles'
+import { saveSong, loadSong, resolveDataFolder } from '../songFiles'
 import { playbackScheduler } from '../scheduler/playback'
 import { getMainWindow } from '../windowRef'
 import { refreshGlobalHotkeys } from '../hotkeys'
@@ -21,6 +21,20 @@ export function registerIpcHandlers(): void {
     // Re-register global hotkeys immediately so a live Settings change takes
     // effect without an app restart (CLAUDE.md §8/§9).
     await refreshGlobalHotkeys()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.pickDataFolder, async () => {
+    const mainWindow = getMainWindow()
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle(IPC_CHANNELS.openDataFolder, async () => {
+    const folder = await resolveDataFolder()
+    await shell.openPath(folder)
   })
 
   ipcMain.handle(IPC_CHANNELS.listLibrary, async () => getLibrary())

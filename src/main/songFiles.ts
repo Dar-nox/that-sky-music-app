@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import type { Song } from '@shared/song'
 import { getSettings, upsertLibraryEntry } from './store'
 
-async function resolveDataFolder(): Promise<string> {
+/** Resolves the effective songs folder: the user-configured `dataFolder`, or its default fallback. */
+export async function resolveDataFolder(): Promise<string> {
   const settings = await getSettings()
   return settings.dataFolder ?? join(app.getPath('userData'), 'songs')
 }
