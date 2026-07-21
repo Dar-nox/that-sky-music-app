@@ -130,20 +130,112 @@ describe('arrangeMidiToSong', () => {
     expect(song.meta.arrangement?.retriggersRemoved).toBe(1)
   })
 
-  it('thins density when events come faster than the budget allows', () => {
-    const rapid = Array.from({ length: 40 }, (_, i) => note(60 + (i % 7), i * 50, 40))
+  it('thins accompaniment when it comes faster than the budget allows', () => {
+    // A melody with a chord under every note, so there is accompaniment available to thin.
+    const notes: ParsedMidiNote[] = []
+    for (let i = 0; i < 16; i++) {
+      notes.push(note(72 + (i % 5), i * 200, 180))
+      notes.push(note(48, i * 200, 180))
+      notes.push(note(52, i * 200, 180))
+    }
     const parsed: ParsedMidiInternal = {
       bpm: 120,
-      durationMs: 2000,
+      durationMs: 3200,
       detectedKey: 'C',
-      tracks: [{ index: 0, name: 'Rapid', notes: rapid }]
+      tracks: [{ index: 0, name: 'Melody + chords', notes }]
     }
 
-    const sparse = arrangeMidiToSong(parsed, options({ density: 'sparse', rhythmGrid: 'off' }))
-    const full = arrangeMidiToSong(parsed, options({ density: 'full', rhythmGrid: 'off' }))
+    const sparse = arrangeMidiToSong(parsed, options({ density: 'sparse', accompaniment: 'full' }))
+    const full = arrangeMidiToSong(parsed, options({ density: 'full', accompaniment: 'full' }))
 
     expect(sparse.notes.length).toBeLessThan(full.notes.length)
     expect(sparse.meta.arrangement?.densityThinned).toBeGreaterThan(0)
+  })
+
+  it('never drops melody notes to density thinning, even in a fast run', () => {
+    // Regression: density thinning used to cap *all* events, so a 16th-note run at 140bpm lost
+    // half its notes — melody included — and the survivors were re-timed, mangling the rhythm.
+    const stepMs = ((60000 / 140) * 4) / 16
+    const melody = Array.from({ length: 32 }, (_, i) =>
+      note(72 + (i % 8), Math.round(i * stepMs), 80)
+    )
+    const parsed: ParsedMidiInternal = {
+      bpm: 140,
+      durationMs: 4000,
+      detectedKey: 'C',
+      tracks: [{ index: 0, name: 'Fast run', notes: melody }]
+    }
+
+    for (const density of ['sparse', 'medium', 'full'] as const) {
+      const song = arrangeMidiToSong(parsed, options({ density, rhythmGrid: 'off' }))
+      expect(song.notes.length).toBe(melody.length)
+    }
+  })
+
+  it('never lets accompaniment displace a melody note on the same cell', () => {
+    // Regression for the "important notes can't be played because it coincides with chords"
+    // bug. A single emission pass with one shared retrigger map meant an accompaniment note
+    // could claim a cell and silently swallow the melody note that needed it a moment later.
+    //
+    // The failure needs accompaniment *interleaved between* melody onsets closer than
+    // minRetriggerMs — i.e. broken/arpeggiated left-hand figures, which are everywhere in the
+    // solo-piano MIDIs this app targets. Simultaneous notes don't trigger it (collision dedupe
+    // already resolves those in the melody's favour), so the interleaving here is the point.
+    const melodyOnly: ParsedMidiNote[] = []
+    const withArpeggio: ParsedMidiNote[] = []
+    for (let i = 0; i < 24; i++) {
+      const onset = i * 120
+      const m = note(72 + (i % 5), onset, 100)
+      melodyOnly.push(m)
+      withArpeggio.push(m)
+      // Broken accompaniment landing 60ms later, inside the 70ms retrigger window, on pitches
+      // that fold onto the cells the melody needs next.
+      withArpeggio.push(note(48 + (i % 5), onset + 60, 60))
+    }
+
+    const base = { bpm: 120, durationMs: 3000, detectedKey: 'C' as const }
+    // rhythmGrid off: snapping would quantise the arpeggio onto the melody's grid and mask it.
+    const opts = { rhythmGrid: 'off' as const, onsetMergeMs: 0, density: 'full' as const }
+
+    const alone = arrangeMidiToSong(
+      { ...base, tracks: [{ index: 0, name: 'M', notes: melodyOnly }] },
+      options({ ...opts, accompaniment: 'none' })
+    )
+    const accompanied = arrangeMidiToSong(
+      { ...base, tracks: [{ index: 0, name: 'M+arp', notes: withArpeggio }] },
+      options({ ...opts, accompaniment: 'full' })
+    )
+
+    expect(alone.notes).toHaveLength(24)
+
+    // Every instant the melody sounds on its own must still carry a note once the arpeggio is
+    // added. Accompaniment may add notes; it must never remove melodic events.
+    const accompaniedTimes = new Set(accompanied.notes.map((n) => n.timeMs))
+    for (const n of alone.notes) {
+      expect(accompaniedTimes.has(n.timeMs)).toBe(true)
+    }
+  })
+
+  it('reduces clutter as the accompaniment mode gets sparser', () => {
+    const notes: ParsedMidiNote[] = []
+    for (let i = 0; i < 16; i++) {
+      notes.push(note(74 + (i % 5), i * 250, 220))
+      notes.push(note(43, i * 250, 220), note(50, i * 250, 220), note(59, i * 250, 220))
+    }
+    const parsed: ParsedMidiInternal = {
+      bpm: 120,
+      durationMs: 4000,
+      detectedKey: 'C',
+      tracks: [{ index: 0, name: 'Dense', notes }]
+    }
+
+    const counts = (['full', 'harmony', 'bass', 'none'] as const).map(
+      (accompaniment) => arrangeMidiToSong(parsed, options({ accompaniment })).notes.length
+    )
+
+    expect(counts[0]).toBeGreaterThan(counts[3]) // full is denser than none
+    expect(counts[1]).toBeLessThanOrEqual(counts[0]) // harmony gating thins full
+    expect(counts[3]).toBeLessThanOrEqual(counts[2]) // none is the sparsest
   })
 
   it('uses the manual key when autoKey is off', () => {

@@ -68,9 +68,20 @@ export function degreeToGridPosition(relativeDegree: number): GridPosition {
  *
  * The 15 keys span exactly 2 octaves of the major scale rooted at `rootPc` (15 = 2*7 + 1
  * scale degrees, endpoints inclusive). Since a song's notes can span far more range than
- * that, this picks one 15-degree window centered on the song's median pitch, then places
- * each note by shifting it whole octaves (degree ± 7) toward that window. Notes that still
- * don't fit within `MAX_TRY_SHIFT_OCTAVES` follow `outOfRangeMode`.
+ * that, this picks one 15-degree window centered on the song's median pitch.
+ *
+ * `outOfRangeMode` decides what happens to a note that doesn't land in that window at its
+ * *natural* octave:
+ *   - `shift` — move it by whole octaves until it fits (always succeeds).
+ *   - `clamp` — pin it to the nearest edge degree of the window.
+ *   - `drop`  — leave it out entirely.
+ *
+ * The octave search deliberately runs for `shift` only. It used to run unconditionally, which
+ * made the setting a no-op: the window is already 2 octaves wide, so searching ±2 octaves
+ * around it covered essentially the whole usable MIDI range and the clamp/drop branches were
+ * unreachable. (This is a narrower reading of CLAUDE.md §6 step 5's "dropped if they still
+ * don't fit after shifting" — taken literally, that phrasing describes a control that can
+ * never do anything.)
  *
  * [DECISION] The schema's conversion report only has three buckets (unaltered / octave-
  * shifted / dropped) — it doesn't separately track "chromatic snap only, no octave shift."
@@ -92,9 +103,12 @@ export function quantizeNotes(notes: QuantizeInput[], rootPc: number, outOfRange
   return notes.map((note, i) => {
     const { globalDegree, altered: chromaticAltered } = degrees[i]
 
-    // Try the smallest octave shifts first so we only jump further when needed.
+    // Only 'shift' is allowed to relocate a note by octaves; the other modes get one chance
+    // at the note's natural octave before falling through to their own behavior.
     const tryOrder: number[] = [0]
-    for (let k = 1; k <= MAX_TRY_SHIFT_OCTAVES; k++) tryOrder.push(-k, k)
+    if (outOfRangeMode === 'shift') {
+      for (let k = 1; k <= MAX_TRY_SHIFT_OCTAVES; k++) tryOrder.push(-k, k)
+    }
 
     for (const k of tryOrder) {
       const shifted = globalDegree + 7 * k

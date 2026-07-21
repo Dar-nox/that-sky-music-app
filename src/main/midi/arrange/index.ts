@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { DENSITY_EVENTS_PER_SECOND, type ArrangeOptions, type ArrangementReport } from '@shared/arranger'
+import {
+  DENSITY_ACCOMPANIMENT_PER_SECOND,
+  type ArrangeOptions,
+  type ArrangementReport
+} from '@shared/arranger'
 import { majorRootPcToKeyName, parseKeyToMajorRootPc } from '@shared/midi'
 import type { SkyNote, Song } from '@shared/song'
 import type { ParsedMidiInternal, ParsedMidiTrackInternal } from '../parse'
@@ -7,7 +11,8 @@ import { detectKey, keyFitPercent } from './keyDetect'
 import { buildChordEvents } from './rhythm'
 import { assignVoiceRoles, melodyLine } from './voices'
 import { planWindows, windowStartAt } from './window'
-import { placeAndReduce, type PlacedChordEvent } from './voicing'
+import { placeAndReduce, type PlacedNote } from './voicing'
+import { selectAccompaniment } from './accompaniment'
 
 /** Fixed tap length for non-sustained notes, matching the plain converter (CLAUDE.md §5). */
 const TAP_DURATION_MS = 150
@@ -30,46 +35,6 @@ function mergeTracks(parsed: ParsedMidiInternal, trackIndices: number[]): Parsed
     merged.push(...track.notes)
   }
   return merged.sort((a, b) => a.timeMs - b.timeMs)
-}
-
-/**
- * Caps how many chord events fire per second.
- *
- * Fifteen discrete keys can't render dense piano writing — past a few strikes per second it
- * stops reading as music and turns into a rattle. When a one-second span exceeds the budget,
- * events are dropped by keeping those that are most rhythmically load-bearing (the ones with
- * the most surviving notes, earliest first), which in practice keeps the downbeats and sheds
- * inner-voice filler between them.
- */
-function thinDensity(
-  events: PlacedChordEvent[],
-  eventsPerSecond: number
-): { events: PlacedChordEvent[]; densityThinned: number } {
-  if (!Number.isFinite(eventsPerSecond) || events.length === 0) {
-    return { events, densityThinned: 0 }
-  }
-
-  const minGapMs = 1000 / eventsPerSecond
-  const kept: PlacedChordEvent[] = []
-  let densityThinned = 0
-
-  for (const event of events) {
-    const previous = kept[kept.length - 1]
-    if (!previous || event.timeMs - previous.timeMs >= minGapMs) {
-      kept.push(event)
-      continue
-    }
-    // Too soon after the last kept event. Keep the denser of the two — a fuller chord is more
-    // likely to be a structural beat than a passing inner-voice hit.
-    if (event.notes.length > previous.notes.length) {
-      densityThinned += previous.notes.length
-      kept[kept.length - 1] = event
-    } else {
-      densityThinned += event.notes.length
-    }
-  }
-
-  return { events: kept, densityThinned }
 }
 
 /**
@@ -106,34 +71,67 @@ export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOp
     options.maxChordNotes
   )
 
-  const { events: thinned, densityThinned } = thinDensity(placed, DENSITY_EVENTS_PER_SECOND[options.density])
+  const beatMs = parsed.bpm > 0 ? 60000 / parsed.bpm : 500
+  const { events: thinned, densityThinned, registerSuppressed } = selectAccompaniment(
+    placed,
+    options.accompaniment,
+    beatMs,
+    DENSITY_ACCOMPANIMENT_PER_SECOND[options.density]
+  )
 
-  // Retrigger guard: the same cell can't re-fire faster than minRetriggerMs. Rapid repeats of
-  // one key don't articulate in-game — they just sound like a stutter.
-  const lastFiredAt = new Map<string, number>()
+  // Emission runs in two passes so that accompaniment can never displace the tune.
+  //
+  // A single pass with one shared retrigger map meant whichever note reached a cell first won:
+  // a chord note taking cell B3 would silently swallow the melody note that needed B3 40ms
+  // later. On a 15-cell grid that collision is constant, and it's what made the melody sound
+  // full of holes. The melody now claims its cells first, and accompaniment fills in around it.
+  const toSkyNote = (note: PlacedNote, timeMs: number): SkyNote => {
+    const hold = options.sustainCapable && note.durationMs >= options.sustainThresholdMs
+    return {
+      row: note.row,
+      col: note.col,
+      timeMs,
+      durationMs: hold ? note.durationMs : TAP_DURATION_MS,
+      hold
+    }
+  }
+
+  const firedAt = new Map<string, number>()
   let retriggersRemoved = 0
+  let melodyProtected = 0
   const notes: SkyNote[] = []
 
+  // Pass 1: the melody, which only ever yields to another melody note on the same cell.
   for (const event of thinned) {
     for (const note of event.notes) {
+      if (note.role !== 'melody') continue
       const cell = `${note.row}${note.col}`
-      const previous = lastFiredAt.get(cell)
+      const previous = firedAt.get(cell)
       if (previous !== undefined && event.timeMs - previous < options.minRetriggerMs) {
         retriggersRemoved++
         continue
       }
-      lastFiredAt.set(cell, event.timeMs)
-
-      const hold = options.sustainCapable && note.durationMs >= options.sustainThresholdMs
-      notes.push({
-        row: note.row,
-        col: note.col,
-        timeMs: event.timeMs,
-        durationMs: hold ? note.durationMs : TAP_DURATION_MS,
-        hold
-      })
+      firedAt.set(cell, event.timeMs)
+      notes.push(toSkyNote(note, event.timeMs))
     }
   }
+
+  // Pass 2: accompaniment, into whatever the melody left free.
+  for (const event of thinned) {
+    for (const note of event.notes) {
+      if (note.role === 'melody') continue
+      const cell = `${note.row}${note.col}`
+      const previous = firedAt.get(cell)
+      if (previous !== undefined && Math.abs(event.timeMs - previous) < options.minRetriggerMs) {
+        melodyProtected++
+        continue
+      }
+      firedAt.set(cell, event.timeMs)
+      notes.push(toSkyNote(note, event.timeMs))
+    }
+  }
+
+  notes.sort((a, b) => a.timeMs - b.timeMs)
 
   if (options.sustainCapable) applyLegatoFill(notes)
 
@@ -148,6 +146,8 @@ export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOp
     gridCollisionsMerged,
     voicingReduced,
     densityThinned,
+    registerSuppressed,
+    melodyProtected,
     retriggersRemoved,
     onsetsSnapped,
     onsetsMerged,

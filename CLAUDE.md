@@ -244,10 +244,19 @@ Pipeline:
    degree of the detected key (this is the "12-tone → 7-note" step — the
    part of the app that actually matters most). Record how far each note
    moved for the conversion report.
-5. **Map** scale-degree + octave to a Sky grid position (row/col). Notes
-   outside the two-octave range get octave-shifted to fit, or dropped if
-   they still don't fit after shifting (configurable: shift vs. drop vs.
-   clamp to nearest edge note).
+5. **Map** scale-degree + octave to a Sky grid position (row/col). A note
+   that doesn't land in the two-octave window *at its natural octave* is
+   resolved by the configurable out-of-range mode: **shift** (move it by
+   whole octaves until it fits), **clamp** (pin it to the nearest edge
+   note), or **drop** (leave it out).
+
+   > Corrected 2026-07-21. This previously read "octave-shifted to fit, or
+   > dropped if they still don't fit after shifting", and the code
+   > implemented exactly that — it octave-shifted first and only consulted
+   > the setting afterwards. Because the window is already two octaves wide,
+   > the shift search covered essentially the whole usable MIDI range, so
+   > the clamp/drop branches were unreachable and the dropdown did nothing
+   > for any real song. The setting has to gate the decision, not follow it.
 6. **Long-press detection.** Only relevant if the user flags the target
    instrument as sustain-capable for this conversion. Any note longer than a
    configurable threshold (default 300ms) becomes `hold: true` with its

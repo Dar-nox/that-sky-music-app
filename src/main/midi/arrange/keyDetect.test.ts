@@ -32,6 +32,39 @@ describe('detectKey', () => {
     expect(detectKey(chromatic).fitPercent).toBeLessThan(65)
   })
 
+  it('prefers the key that covers the most sounding time over the more "tonal" one', () => {
+    // An F-major melody over a long held C bass. Profile correlation alone hears the pedal as
+    // a tonic and picks C, which fits 97% of the music; F fits all of it. The missing 3% is
+    // every Bb in the tune getting snapped to B natural.
+    const notes = [
+      { midi: 36, durationMs: 8000 },
+      { midi: 36, durationMs: 8000 },
+      ...[65, 67, 69, 70, 72, 70, 69, 67, 65].map((midi) => ({ midi, durationMs: 300 }))
+    ]
+
+    const result = detectKey(notes)
+
+    expect(result.keyName).toBe('F')
+    expect(result.fitPercent).toBe(100)
+  })
+
+  it('uses tonal weighting only to break ties between equally well-fitting keys', () => {
+    // G-A-B-C-D sits inside both C major and G major, so coverage cannot separate them.
+    // Emphasising G as tonic should settle it on G.
+    const notes = [
+      { midi: 67, durationMs: 4000 },
+      { midi: 74, durationMs: 2000 },
+      { midi: 71, durationMs: 1500 },
+      { midi: 69, durationMs: 400 },
+      { midi: 72, durationMs: 400 }
+    ]
+
+    const result = detectKey(notes)
+
+    expect(result.fitPercent).toBe(100)
+    expect(result.keyName).toBe('G')
+  })
+
   it('returns a safe default for an empty note list', () => {
     expect(detectKey([])).toEqual({ rootPc: 0, keyName: 'C', fitPercent: 0 })
   })

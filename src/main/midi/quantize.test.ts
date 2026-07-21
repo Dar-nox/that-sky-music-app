@@ -55,6 +55,28 @@ describe('quantizeNotes', () => {
     expect(result[1].altered).toBe(true)
   })
 
+  it('gives three genuinely different results for the three out-of-range modes', () => {
+    // Regression guard. The octave search used to run for every mode, and since it covered
+    // +/-2 octaves around an already-2-octave-wide window, nothing realistic ever reached the
+    // clamp/drop branches — all three settings silently behaved as 'shift'. The old tests
+    // missed it because they only probed with MIDI 0, which is off the end of the piano.
+    // D2 under a D5-ish melody is an ordinary left-hand bass note.
+    const notes = [72, 74, 76, 38].map((midi, i) => ({ midi, timeMs: i * 200 }))
+
+    const shifted = quantizeNotes(notes, 0, 'shift')[3]
+    const clamped = quantizeNotes(notes, 0, 'clamp')[3]
+    const dropped = quantizeNotes(notes, 0, 'drop')[3]
+
+    expect(shifted.dropped).toBe(false)
+    expect(clamped.dropped).toBe(false)
+    expect(dropped.dropped).toBe(true)
+    expect(dropped.position).toBeNull()
+
+    // Shift relocates it by whole octaves; clamp pins it to the window's bottom edge. Those
+    // must not be the same cell, or the setting is still a no-op.
+    expect(shifted.position).not.toEqual(clamped.position)
+  })
+
   it('returns an empty array for no input notes', () => {
     expect(quantizeNotes([], 0, 'shift')).toEqual([])
   })

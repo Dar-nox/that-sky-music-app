@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import {
   DEFAULT_ARRANGE_OPTIONS,
+  type AccompanimentMode,
   type ArrangeOptions,
   type DensityMode,
   type RhythmGrid,
@@ -26,6 +27,13 @@ const RHYTHM_GRIDS: { value: RhythmGrid; label: string }[] = [
   { value: '1/32', label: '1/32 notes — light touch-up' }
 ]
 
+const ACCOMPANIMENTS: { value: AccompanimentMode; label: string; hint: string }[] = [
+  { value: 'harmony', label: 'On harmony changes', hint: 'Chords land only when the harmony moves — recommended' },
+  { value: 'full', label: 'Full', hint: 'A voicing under every melody note; densest, muddiest' },
+  { value: 'bass', label: 'Bass only', hint: 'Just the bass line under the melody' },
+  { value: 'none', label: 'None', hint: 'Melody alone — the cleanest, most reliable result' }
+]
+
 const DENSITIES: { value: DensityMode; label: string }[] = [
   { value: 'sparse', label: 'Sparse' },
   { value: 'medium', label: 'Medium' },
@@ -48,6 +56,9 @@ export function ArrangerMode() {
   const [maxChordNotes, setMaxChordNotes] = useState(DEFAULT_ARRANGE_OPTIONS.maxChordNotes)
   const [rhythmGrid, setRhythmGrid] = useState<RhythmGrid>(DEFAULT_ARRANGE_OPTIONS.rhythmGrid)
   const [density, setDensity] = useState<DensityMode>(DEFAULT_ARRANGE_OPTIONS.density)
+  const [accompaniment, setAccompaniment] = useState<AccompanimentMode>(
+    DEFAULT_ARRANGE_OPTIONS.accompaniment
+  )
   const [windowMode, setWindowMode] = useState<WindowMode>(DEFAULT_ARRANGE_OPTIONS.windowMode)
 
   const [arranging, setArranging] = useState(false)
@@ -118,6 +129,7 @@ export function ArrangerMode() {
       onsetMergeMs: DEFAULT_ARRANGE_OPTIONS.onsetMergeMs,
       minRetriggerMs: DEFAULT_ARRANGE_OPTIONS.minRetriggerMs,
       density,
+      accompaniment,
       windowMode,
       sourceFileName: fileName ?? 'unknown.mid',
       title: title || 'Untitled',
@@ -260,10 +272,30 @@ export function ArrangerMode() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-slate-300">Accompaniment</label>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Fifteen keys can't hold a full piano texture — a chord under every melody note just
+              competes with the tune for the same keys. The melody always plays in full; this
+              controls how much goes underneath it.
+            </p>
+            <select
+              value={accompaniment}
+              onChange={(e) => setAccompaniment(e.target.value as AccompanimentMode)}
+              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
+            >
+              {ACCOMPANIMENTS.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label} — {a.hint}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <span className="block text-sm font-medium text-slate-300">Density</span>
             <p className="mt-0.5 text-xs text-slate-500">
-              Caps how many chords fire per second. Busy piano writing turns to noise on 15 keys —
-              drop to Sparse if an arrangement sounds cluttered.
+              Caps how often the accompaniment re-strikes. Never affects the melody — drop to
+              Sparse if an arrangement still sounds cluttered.
             </p>
             <div className="mt-1 flex gap-4 text-sm text-slate-300">
               {DENSITIES.map((d) => (
@@ -356,6 +388,8 @@ export function ArrangerMode() {
             <li>Doublings merged: {report.gridCollisionsMerged}</li>
             <li>Voicing-reduced: {report.voicingReduced}</li>
             <li>Density-thinned: {report.densityThinned}</li>
+            <li>Register-suppressed: {report.registerSuppressed}</li>
+            <li>Blocked by melody: {report.melodyProtected}</li>
             <li>Onsets snapped: {report.onsetsSnapped}</li>
             <li>Onsets merged: {report.onsetsMerged}</li>
             <li>Retriggers removed: {report.retriggersRemoved}</li>
