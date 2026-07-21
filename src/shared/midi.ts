@@ -30,7 +30,8 @@ export type ChordMode = 'melody' | 'chords'
 export type OutOfRangeMode = 'shift' | 'drop' | 'clamp'
 
 export interface ConvertOptions {
-  trackIndex: number
+  /** One or more track indices to merge into a single note stream before conversion. */
+  trackIndices: number[]
   /** Major-scale root name, e.g. "C", "F#", "Bb". */
   key: string
   sustainCapable: boolean

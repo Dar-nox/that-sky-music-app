@@ -5,7 +5,7 @@ import type { ParsedMidiInternal } from './parse'
 
 function baseOptions(overrides: Partial<ConvertOptions> = {}): ConvertOptions {
   return {
-    trackIndex: 0,
+    trackIndices: [0],
     key: 'C',
     sustainCapable: false,
     sustainThresholdMs: 300,
@@ -49,7 +49,33 @@ describe('convertMidiToSong', () => {
 
   it('throws for an out-of-range track index', () => {
     const parsed = baseParsed([])
-    expect(() => convertMidiToSong(parsed, baseOptions({ trackIndex: 5 }))).toThrow()
+    expect(() => convertMidiToSong(parsed, baseOptions({ trackIndices: [5] }))).toThrow()
+  })
+
+  it('throws when no tracks are selected', () => {
+    const parsed = baseParsed([])
+    expect(() => convertMidiToSong(parsed, baseOptions({ trackIndices: [] }))).toThrow()
+  })
+
+  it('merges notes from multiple selected tracks before chord density filtering', () => {
+    const parsed: ParsedMidiInternal = {
+      bpm: 120,
+      durationMs: 2000,
+      detectedKey: 'C',
+      tracks: [
+        { index: 0, name: 'Right hand', notes: [{ midi: 72, timeMs: 0, durationMs: 200, velocity: 0.8 }] },
+        { index: 1, name: 'Left hand', notes: [{ midi: 60, timeMs: 0, durationMs: 200, velocity: 0.6 }] }
+      ]
+    }
+
+    const melodyOnly = convertMidiToSong(parsed, baseOptions({ trackIndices: [0, 1], chordMode: 'melody' }))
+    expect(melodyOnly.notes).toHaveLength(1)
+
+    const chords = convertMidiToSong(
+      parsed,
+      baseOptions({ trackIndices: [0, 1], chordMode: 'chords', maxChordNotes: 4 })
+    )
+    expect(chords.notes).toHaveLength(2)
   })
 
   it('keeps only the highest note per timestamp in melody chord mode', () => {

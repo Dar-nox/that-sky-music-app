@@ -26,7 +26,7 @@ export function ConvertMode() {
   const [parsed, setParsed] = useState<ParsedMidi | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const [trackIndex, setTrackIndex] = useState(0)
+  const [selectedTrackIndices, setSelectedTrackIndices] = useState<number[]>([0])
   const [key, setKey] = useState('C')
   const [title, setTitle] = useState('')
   const [artist, setArtist] = useState('')
@@ -65,7 +65,7 @@ export function ConvertMode() {
       setFileName(file.name)
       setBuffer(arrayBuffer)
       setParsed(result)
-      setTrackIndex(result.suggestedTrackIndex)
+      setSelectedTrackIndices([result.suggestedTrackIndex])
       setKey(normalizeToMajorKeyName(result.detectedKey ?? result.estimatedKey))
       setTitle(file.name.replace(/\.(mid|midi)$/i, ''))
     } catch (err) {
@@ -76,8 +76,14 @@ export function ConvertMode() {
     }
   }
 
+  function toggleTrack(index: number): void {
+    setSelectedTrackIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index].sort((a, b) => a - b)
+    )
+  }
+
   async function handleConvert(): Promise<void> {
-    if (!buffer || !parsed) return
+    if (!buffer || !parsed || selectedTrackIndices.length === 0) return
 
     setConverting(true)
     setError(null)
@@ -85,7 +91,7 @@ export function ConvertMode() {
     setSavedPath(null)
 
     const options: ConvertOptions = {
-      trackIndex,
+      trackIndices: selectedTrackIndices,
       key,
       sustainCapable,
       sustainThresholdMs,
@@ -150,18 +156,26 @@ export function ConvertMode() {
       {parsed && (
         <div className="mt-6 space-y-4 rounded border border-slate-700 bg-slate-800/50 p-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300">Melody track</label>
-            <select
-              value={trackIndex}
-              onChange={(e) => setTrackIndex(Number(e.target.value))}
-              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-            >
+            <label className="block text-sm font-medium text-slate-300">Tracks to convert</label>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Select more than one to combine them (e.g. a piano file's separate treble/bass-clef
+              tracks) into a single note stream — pair with "Full chords" below for the best result.
+            </p>
+            <div className="mt-1 space-y-1 rounded border border-slate-600 bg-slate-900 p-2">
               {parsed.tracks.map((t) => (
-                <option key={t.index} value={t.index}>
+                <label key={t.index} className="flex items-center gap-1.5 text-sm text-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={selectedTrackIndices.includes(t.index)}
+                    onChange={() => toggleTrack(t.index)}
+                  />
                   {t.name} ({t.noteCount} notes){t.index === parsed.suggestedTrackIndex ? ' — suggested' : ''}
-                </option>
+                </label>
               ))}
-            </select>
+            </div>
+            {selectedTrackIndices.length === 0 && (
+              <p className="mt-1 text-xs text-red-400">Select at least one track.</p>
+            )}
           </div>
 
           <div>
@@ -272,7 +286,7 @@ export function ConvertMode() {
 
           <button
             onClick={() => void handleConvert()}
-            disabled={converting}
+            disabled={converting || selectedTrackIndices.length === 0}
             className="rounded bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
           >
             {converting ? 'Converting…' : 'Convert'}

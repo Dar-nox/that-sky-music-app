@@ -43,12 +43,21 @@ function applyChordDensity(
  * (CLAUDE.md §6).
  */
 export function convertMidiToSong(parsed: ParsedMidiInternal, options: ConvertOptions): Song {
-  const track = parsed.tracks[options.trackIndex]
-  if (!track) {
-    throw new Error(`Track index ${options.trackIndex} does not exist in this MIDI file`)
+  if (options.trackIndices.length === 0) {
+    throw new Error('At least one track must be selected')
   }
 
-  const densityFiltered = applyChordDensity(track.notes, options.chordMode, options.maxChordNotes)
+  const mergedNotes: ParsedMidiTrackInternal['notes'] = []
+  for (const trackIndex of options.trackIndices) {
+    const track = parsed.tracks[trackIndex]
+    if (!track) {
+      throw new Error(`Track index ${trackIndex} does not exist in this MIDI file`)
+    }
+    mergedNotes.push(...track.notes)
+  }
+  mergedNotes.sort((a, b) => a.timeMs - b.timeMs)
+
+  const densityFiltered = applyChordDensity(mergedNotes, options.chordMode, options.maxChordNotes)
   const rootPc = parseKeyToMajorRootPc(options.key)
 
   const quantizeInputs: QuantizeInput[] = densityFiltered.map((n) => ({ midi: n.midi, timeMs: n.timeMs }))
