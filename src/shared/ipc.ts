@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   convertMidi: 'midi:convert',
   saveSong: 'song:save',
   loadSong: 'song:load',
+  deleteSong: 'song:delete',
   importSheet: 'song:importSheet',
   playbackLoad: 'playback:load',
   playbackPlay: 'playback:play',
@@ -39,6 +40,8 @@ export interface SkyAPI {
   convertMidi(buffer: ArrayBuffer, options: ConvertOptions): Promise<Song>
   saveSong(song: Song): Promise<string>
   loadSong(id: string): Promise<Song>
+  /** Deletes a song's file from the data folder and removes it from the library index. */
+  deleteSong(id: string): Promise<void>
   /** Detects + normalizes an external community sheet (Sky Studio / sky-music JSON) and
    * saves it to the library in one step. `rawText` is the raw file contents (read in the
    * renderer via `File.text()`/`FileReader`, since the renderer has no direct fs access). */

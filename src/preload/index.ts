@@ -18,6 +18,7 @@ const skyAPI: SkyAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.convertMidi, buffer, options),
   saveSong: (song: Song) => ipcRenderer.invoke(IPC_CHANNELS.saveSong, song),
   loadSong: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.loadSong, id),
+  deleteSong: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteSong, id),
   importSheet: (rawText: string, fileName: string) => ipcRenderer.invoke(IPC_CHANNELS.importSheet, rawText, fileName),
   playbackLoad: (song: Song, dryRun: boolean) => ipcRenderer.invoke(IPC_CHANNELS.playbackLoad, song, dryRun),
   playbackPlay: () => ipcRenderer.invoke(IPC_CHANNELS.playbackPlay),

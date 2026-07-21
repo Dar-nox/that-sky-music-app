@@ -145,6 +145,24 @@ export function PlayMusicMode() {
     }
   }
 
+  async function deleteFromLibrary(meta: SongMeta): Promise<void> {
+    if (!window.confirm(`Delete "${meta.title}" from your library? This can't be undone.`)) return
+
+    try {
+      if (meta.id === selectedId) {
+        setCountdown(null)
+        await window.skyAPI.playbackStop()
+        setStatus(IDLE_STATUS)
+        setActiveCells(new Set())
+        setSelectedId(null)
+      }
+      await window.skyAPI.deleteSong(meta.id)
+      await refreshLibrary()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete song')
+    }
+  }
+
   /** Imports one or more external community sheet files (Sky Studio / sky-music JSON,
    * per CLAUDE.md §5/§7) via the file picker or drag-and-drop, normalizes + saves each
    * through the `importSheet` IPC channel, then refreshes the library list. */
@@ -226,15 +244,23 @@ export function PlayMusicMode() {
         {library.length === 0 && <p className="text-sm text-slate-500">No songs yet — convert or import one.</p>}
         <ul className="space-y-1">
           {library.map((meta) => (
-            <li key={meta.id}>
+            <li key={meta.id} className="group flex items-center gap-1">
               <button
                 onClick={() => void selectSong(meta)}
-                className={`w-full rounded px-2 py-1.5 text-left text-sm ${
+                className={`min-w-0 flex-1 rounded px-2 py-1.5 text-left text-sm ${
                   meta.id === selectedId ? 'bg-sky-600 text-white' : 'text-slate-300 hover:bg-slate-800'
                 }`}
               >
                 <div className="truncate font-medium">{meta.title}</div>
                 {meta.artist && <div className="truncate text-xs opacity-70">{meta.artist}</div>}
+              </button>
+              <button
+                onClick={() => void deleteFromLibrary(meta)}
+                title="Delete from library"
+                aria-label={`Delete ${meta.title} from library`}
+                className="shrink-0 rounded px-1.5 py-1 text-xs text-slate-500 opacity-0 hover:bg-red-900/40 hover:text-red-300 group-hover:opacity-100"
+              >
+                ✕
               </button>
             </li>
           ))}

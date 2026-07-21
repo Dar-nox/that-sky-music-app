@@ -6,7 +6,7 @@ import type { Song } from '@shared/song'
 import { getSettings, setSettings, getLibrary } from '../store'
 import { parseMidiFile, summarizeParsedMidi } from '../midi/parse'
 import { convertMidiToSong } from '../midi/convert'
-import { saveSong, loadSong, resolveDataFolder } from '../songFiles'
+import { saveSong, loadSong, deleteSong, resolveDataFolder } from '../songFiles'
 import { importExternalSheet } from '../importAdapters'
 import { playbackScheduler } from '../scheduler/playback'
 import { getMainWindow } from '../windowRef'
@@ -54,6 +54,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.loadSong, async (_event, id: string) => {
     return loadSong(id)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.deleteSong, async (_event, id: string) => {
+    await deleteSong(id)
   })
 
   ipcMain.handle(IPC_CHANNELS.importSheet, async (_event, rawText: string, fileName: string) => {

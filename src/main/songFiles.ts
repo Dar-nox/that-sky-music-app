@@ -1,8 +1,8 @@
 import { app } from 'electron'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Song } from '@shared/song'
-import { getSettings, upsertLibraryEntry } from './store'
+import { getSettings, removeLibraryEntry, upsertLibraryEntry } from './store'
 
 /** Resolves the effective songs folder: the user-configured `dataFolder`, or its default fallback. */
 export async function resolveDataFolder(): Promise<string> {
@@ -28,4 +28,12 @@ export async function loadSong(id: string): Promise<Song> {
   const filePath = join(folder, `${id}.json`)
   const raw = await readFile(filePath, 'utf-8')
   return JSON.parse(raw) as Song
+}
+
+/** Deletes a song's file from the data folder and removes it from the library index. */
+export async function deleteSong(id: string): Promise<void> {
+  const folder = await resolveDataFolder()
+  const filePath = join(folder, `${id}.json`)
+  await rm(filePath, { force: true })
+  await removeLibraryEntry(id)
 }

@@ -72,3 +72,9 @@ export async function upsertLibraryEntry(meta: SongMeta): Promise<void> {
   const withoutExisting = library.filter((entry) => entry.id !== meta.id)
   await setLibrary([...withoutExisting, meta])
 }
+
+/** Removes a song from the library index by id. */
+export async function removeLibraryEntry(id: string): Promise<void> {
+  const library = await getLibrary()
+  await setLibrary(library.filter((entry) => entry.id !== id))
+}

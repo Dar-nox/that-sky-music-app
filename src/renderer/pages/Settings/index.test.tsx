@@ -24,6 +24,7 @@ describe('Settings', () => {
       convertMidi: vi.fn(),
       saveSong: vi.fn(),
       loadSong: vi.fn(),
+      deleteSong: vi.fn(),
       importSheet: vi.fn(),
       playbackLoad: vi.fn(),
       playbackPlay: vi.fn(),
