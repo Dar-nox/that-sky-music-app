@@ -44,11 +44,7 @@ getting these wrong would make the whole conversion pipeline useless:
   "black key" equivalent. This is the single most important fact for the
   conversion algorithm — see §5.
 - **Default Steam/PC keyboard layout** is the piano-style block:
-  `Q W E R T` / `A S D F G` / `Z X C V B` (confirmed via the community
-  conversion tool's documented default notation). **[VERIFY]** the exact
-  row↔pitch direction (is row Q-W-E-R-T the lowest octave or the highest?)
-  against an in-game screenshot — sources agree on the 3×5 shape and the key
-  set, not on which physical row is "top" in-game.
+  `Y U I O P` / `H J K L ;` / `N M , . /`.
 - **Long-press / sustain is instrument-specific**, not universal. Confirmed
   sustain-capable instruments (marked with a fermata symbol in-game): Electric
   Guitar, Voice of AURORA, Triumph Violin, Triumph Saxophone, Cello,
@@ -316,9 +312,9 @@ Pipeline:
 
 | Grid | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 |
 |---|---|---|---|---|---|
-| Row A | Q | W | E | R | T |
-| Row B | A | S | D | F | G |
-| Row C | Z | X | C | V | B |
+| Row A | Y | U | I | O | P |
+| Row B | H | J | K | L | ; |
+| Row C | N | M | , | . | / |
 
 | Transport action | Default hotkey |
 |---|---|

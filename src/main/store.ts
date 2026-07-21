@@ -1,4 +1,5 @@
 import type StoreType from 'electron-store'
+import { DEFAULT_NOTE_KEYS, type NoteKeyMap } from '@shared/keybinds'
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/settings'
 import type { SongMeta } from '@shared/song'
 
@@ -8,6 +9,17 @@ interface StoreSchema {
 }
 
 let storePromise: Promise<StoreType<StoreSchema>> | null = null
+
+/** The app's original, incorrect defaults. Used only to migrate saved settings. */
+const LEGACY_NOTE_KEYS: NoteKeyMap = {
+  A1: 'Q', A2: 'W', A3: 'E', A4: 'R', A5: 'T',
+  B1: 'A', B2: 'S', B3: 'D', B4: 'F', B5: 'G',
+  C1: 'Z', C2: 'X', C3: 'C', C4: 'V', C5: 'B'
+}
+
+function mapsMatch(left: NoteKeyMap, right: NoteKeyMap): boolean {
+  return Object.entries(left).every(([id, key]) => right[id as keyof NoteKeyMap] === key)
+}
 
 // electron-store is ESM-only; this main process builds as CJS, so it's loaded via dynamic import.
 function getStore(): Promise<StoreType<StoreSchema>> {
@@ -26,7 +38,17 @@ function getStore(): Promise<StoreType<StoreSchema>> {
 
 export async function getSettings(): Promise<AppSettings> {
   const store = await getStore()
-  return store.get('settings')
+  const settings = store.get('settings')
+
+  // Existing installs persisted the former QWERTY mapping. Update only that
+  // exact map, so any future user-defined remapping remains untouched.
+  if (mapsMatch(settings.noteKeys, LEGACY_NOTE_KEYS)) {
+    const migrated = { ...settings, noteKeys: DEFAULT_NOTE_KEYS }
+    store.set('settings', migrated)
+    return migrated
+  }
+
+  return settings
 }
 
 export async function setSettings(settings: AppSettings): Promise<void> {

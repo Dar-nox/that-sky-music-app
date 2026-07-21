@@ -5,21 +5,21 @@ export type NoteKeyId = `${GridRow}${GridCol}`
 export type NoteKeyMap = Record<NoteKeyId, string>
 
 export const DEFAULT_NOTE_KEYS: NoteKeyMap = {
-  A1: 'Q',
-  A2: 'W',
-  A3: 'E',
-  A4: 'R',
-  A5: 'T',
-  B1: 'A',
-  B2: 'S',
-  B3: 'D',
-  B4: 'F',
-  B5: 'G',
-  C1: 'Z',
-  C2: 'X',
-  C3: 'C',
-  C4: 'V',
-  C5: 'B'
+  A1: 'Y',
+  A2: 'U',
+  A3: 'I',
+  A4: 'O',
+  A5: 'P',
+  B1: 'H',
+  B2: 'J',
+  B3: 'K',
+  B4: 'L',
+  B5: ';',
+  C1: 'N',
+  C2: 'M',
+  C3: ',',
+  C4: '.',
+  C5: '/'
 }
 
 export type TransportAction = 'playPause' | 'next' | 'previous' | 'panic'
