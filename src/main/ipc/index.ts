@@ -2,10 +2,12 @@ import { dialog, ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ConvertOptions } from '@shared/midi'
+import type { ArrangeOptions } from '@shared/arranger'
 import type { Song } from '@shared/song'
 import { getSettings, setSettings, getLibrary } from '../store'
 import { parseMidiFile, summarizeParsedMidi } from '../midi/parse'
 import { convertMidiToSong } from '../midi/convert'
+import { arrangeMidiToSong } from '../midi/arrange'
 import { saveSong, loadSong, deleteSong, resolveDataFolder } from '../songFiles'
 import { importExternalSheet } from '../importAdapters'
 import { playbackScheduler } from '../scheduler/playback'
@@ -46,6 +48,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.convertMidi, async (_event, buffer: ArrayBuffer, options: ConvertOptions) => {
     return convertMidiToSong(parseMidiFile(buffer), options)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.arrangeMidi, async (_event, buffer: ArrayBuffer, options: ArrangeOptions) => {
+    return arrangeMidiToSong(parseMidiFile(buffer), options)
   })
 
   ipcMain.handle(IPC_CHANNELS.saveSong, async (_event, song: Song) => {

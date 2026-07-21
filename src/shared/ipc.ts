@@ -1,6 +1,7 @@
 import type { AppSettings } from './settings'
 import type { Song, SongMeta } from './song'
 import type { ConvertOptions, ParsedMidi } from './midi'
+import type { ArrangeOptions } from './arranger'
 import type { PlaybackEvent, PlaybackStatus } from './playback'
 
 export const IPC_CHANNELS = {
@@ -10,6 +11,7 @@ export const IPC_CHANNELS = {
   listLibrary: 'library:list',
   parseMidi: 'midi:parse',
   convertMidi: 'midi:convert',
+  arrangeMidi: 'midi:arrange',
   saveSong: 'song:save',
   loadSong: 'song:load',
   deleteSong: 'song:delete',
@@ -38,6 +40,8 @@ export interface SkyAPI {
   listLibrary(): Promise<SongMeta[]>
   parseMidi(buffer: ArrayBuffer): Promise<ParsedMidi>
   convertMidi(buffer: ArrayBuffer, options: ConvertOptions): Promise<Song>
+  /** Sky Music Arranger: the musically-optimizing alternative to `convertMidi`. */
+  arrangeMidi(buffer: ArrayBuffer, options: ArrangeOptions): Promise<Song>
   saveSong(song: Song): Promise<string>
   loadSong(id: string): Promise<Song>
   /** Deletes a song's file from the data folder and removes it from the library index. */

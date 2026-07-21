@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type AppPage = 'convert' | 'play' | 'settings'
+export type AppPage = 'convert' | 'arranger' | 'play' | 'settings'
 
 interface NavState {
   page: AppPage

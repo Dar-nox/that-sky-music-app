@@ -2,6 +2,7 @@ import { useNavStore, type AppPage } from '../store/navStore'
 
 const TABS: { id: AppPage; label: string }[] = [
   { id: 'convert', label: 'Convert' },
+  { id: 'arranger', label: 'Arranger' },
   { id: 'play', label: 'Play Music' },
   { id: 'settings', label: 'Settings' }
 ]

@@ -3,6 +3,7 @@ import type { IpcRendererEvent } from 'electron'
 import { IPC_CHANNELS, type SkyAPI } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ConvertOptions } from '@shared/midi'
+import type { ArrangeOptions } from '@shared/arranger'
 import type { PlaybackEvent } from '@shared/playback'
 import type { Song } from '@shared/song'
 
@@ -16,6 +17,8 @@ const skyAPI: SkyAPI = {
   parseMidi: (buffer: ArrayBuffer) => ipcRenderer.invoke(IPC_CHANNELS.parseMidi, buffer),
   convertMidi: (buffer: ArrayBuffer, options: ConvertOptions) =>
     ipcRenderer.invoke(IPC_CHANNELS.convertMidi, buffer, options),
+  arrangeMidi: (buffer: ArrayBuffer, options: ArrangeOptions) =>
+    ipcRenderer.invoke(IPC_CHANNELS.arrangeMidi, buffer, options),
   saveSong: (song: Song) => ipcRenderer.invoke(IPC_CHANNELS.saveSong, song),
   loadSong: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.loadSong, id),
   deleteSong: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteSong, id),

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { NavTabs } from './components/NavTabs'
 import { ConvertMode } from './pages/ConvertMode'
+import { ArrangerMode } from './pages/ArrangerMode'
 import { PlayMusicMode } from './pages/PlayMusicMode'
 import { Settings } from './pages/Settings'
 import { useNavStore } from './store/navStore'
 
 const PAGES = {
   convert: ConvertMode,
+  arranger: ArrangerMode,
   play: PlayMusicMode,
   settings: Settings
 }

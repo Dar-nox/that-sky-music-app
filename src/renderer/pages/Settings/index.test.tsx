@@ -22,6 +22,7 @@ describe('Settings', () => {
       listLibrary: vi.fn().mockResolvedValue([]),
       parseMidi: vi.fn(),
       convertMidi: vi.fn(),
+      arrangeMidi: vi.fn(),
       saveSong: vi.fn(),
       loadSong: vi.fn(),
       deleteSong: vi.fn(),
