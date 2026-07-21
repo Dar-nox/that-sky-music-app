@@ -20,13 +20,19 @@ export const IPC_CHANNELS = {
   playbackSetDryRun: 'playback:setDryRun',
   playbackSeek: 'playback:seek',
   playbackPanic: 'playback:panic',
-  playbackEvent: 'playback:event'
+  playbackEvent: 'playback:event',
+  pickDataFolder: 'settings:pickDataFolder',
+  openDataFolder: 'settings:openDataFolder'
 } as const
 
 export interface SkyAPI {
   ping(): Promise<string>
   getSettings(): Promise<AppSettings>
   setSettings(settings: AppSettings): Promise<void>
+  /** Opens a native folder picker. Returns the chosen path, or null if the user cancelled. */
+  pickDataFolder(): Promise<string | null>
+  /** Opens the effective data folder (settings.dataFolder, or its default fallback) in the OS file explorer. */
+  openDataFolder(): Promise<void>
   listLibrary(): Promise<SongMeta[]>
   parseMidi(buffer: ArrayBuffer): Promise<ParsedMidi>
   convertMidi(buffer: ArrayBuffer, options: ConvertOptions): Promise<Song>
