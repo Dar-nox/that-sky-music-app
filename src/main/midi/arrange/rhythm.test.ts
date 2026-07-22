@@ -52,4 +52,23 @@ describe('buildChordEvents', () => {
   it('handles an empty note list', () => {
     expect(buildChordEvents([], 120, '1/16', 30).events).toEqual([])
   })
+
+  it('does not merge two onsets that only coincide after grid-snapping', () => {
+    // 1/16 @ 120bpm snaps to a 125ms grid, so the tick at 125 covers real times [62.5, 187.5).
+    // 70 and 105 are 35ms apart in real time — outside a 30ms onsetMergeMs — but both round to
+    // the same tick. They must stay two distinct events, not merge just because they now share
+    // a snapped timestamp.
+    const result = buildChordEvents([note(60, 70), note(64, 105)], 120, '1/16', 30)
+
+    expect(result.events.map((e) => e.timeMs)).toEqual([125, 125])
+    expect(result.events).toHaveLength(2)
+    expect(result.onsetsMerged).toBe(0)
+  })
+
+  it('still merges onsets that are genuinely close in real time and land on the same tick', () => {
+    const result = buildChordEvents([note(60, 70), note(64, 90)], 120, '1/16', 30)
+
+    expect(result.events).toHaveLength(1)
+    expect(result.events[0].timeMs).toBe(125)
+  })
 })

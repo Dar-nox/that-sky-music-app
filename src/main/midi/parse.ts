@@ -47,8 +47,12 @@ export function parseMidiFile(buffer: ArrayBuffer): ParsedMidiInternal {
  * Fewest-simultaneous-overlapping-notes-wins heuristic for picking a starting melody
  * track suggestion (CLAUDE.md §6 step 2) — ties broken by higher average pitch. This is
  * only ever a suggestion; the user picks the real track in the UI.
+ *
+ * Also reused by the Arranger (src/main/midi/arrange/index.ts) to bias voice-role assignment
+ * toward whichever selected track is most likely the melody, instead of relying on pitch height
+ * alone — the same heuristic, one more consumer.
  */
-function suggestMelodyTrackIndex(tracks: ParsedMidiTrackInternal[]): number {
+export function suggestMelodyTrackIndex(tracks: ParsedMidiTrackInternal[]): number {
   const candidates = tracks.filter((t) => t.notes.length > 0)
   if (candidates.length === 0) return 0
 

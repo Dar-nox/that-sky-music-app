@@ -1,10 +1,15 @@
 import { RHYTHM_GRID_DIVISIONS, type RhythmGrid } from '@shared/arranger'
 import type { ParsedMidiNote } from '@shared/midi'
 
+/** A note carrying its source MIDI track, so voice-role assignment can use track identity. */
+export interface ArrangeNote extends ParsedMidiNote {
+  sourceTrack?: number
+}
+
 /** A set of notes that should be struck as one simultaneous gesture. */
 export interface ChordEvent {
   timeMs: number
-  notes: ParsedMidiNote[]
+  notes: ArrangeNote[]
 }
 
 export interface RhythmResult {
@@ -34,7 +39,7 @@ export function gridStepMs(bpm: number, grid: RhythmGrid): number | null {
  * rewriting durations here would fight the legato-fill in sustain shaping.
  */
 export function buildChordEvents(
-  notes: ParsedMidiNote[],
+  notes: ArrangeNote[],
   bpm: number,
   grid: RhythmGrid,
   onsetMergeMs: number
@@ -46,26 +51,38 @@ export function buildChordEvents(
   const step = gridStepMs(bpm, grid)
   let onsetsSnapped = 0
 
+  // Original (pre-snap) time travels alongside the snapped one so the merge decision below can
+  // judge real onset proximity — snapping alone can put two genuinely distinct onsets on the same
+  // grid tick, and that must not be conflated with them actually being within onsetMergeMs.
   const snapped = notes.map((note) => {
-    if (step === null) return note
+    const originalTimeMs = note.timeMs
+    if (step === null) return { ...note, originalTimeMs }
     const target = Math.round(note.timeMs / step) * step
     if (target !== note.timeMs) onsetsSnapped++
-    return { ...note, timeMs: target }
+    return { ...note, timeMs: target, originalTimeMs }
   })
 
-  snapped.sort((a, b) => a.timeMs - b.timeMs || b.midi - a.midi)
+  snapped.sort((a, b) => a.originalTimeMs - b.originalTimeMs || b.midi - a.midi)
 
-  // Distinct onsets first, then merge any that sit within the tolerance of the group's anchor.
+  const stripOriginal = (note: (typeof snapped)[number]): ArrangeNote => {
+    const { timeMs, midi, durationMs, velocity, sourceTrack } = note
+    return { timeMs, midi, durationMs, velocity, sourceTrack }
+  }
+
+  // Distinct onsets first, then merge any that sit within the tolerance of the group's anchor,
+  // judged by original onset time — not the post-snap time, which can coincide by chance.
   const events: ChordEvent[] = []
+  let groupAnchorOriginalMs = 0
   let onsetsMerged = 0
 
   for (const note of snapped) {
     const current = events[events.length - 1]
-    if (current && note.timeMs - current.timeMs <= onsetMergeMs) {
+    if (current && note.originalTimeMs - groupAnchorOriginalMs <= onsetMergeMs) {
       if (note.timeMs !== current.timeMs) onsetsMerged++
-      current.notes.push(note)
+      current.notes.push(stripOriginal(note))
     } else {
-      events.push({ timeMs: note.timeMs, notes: [note] })
+      groupAnchorOriginalMs = note.originalTimeMs
+      events.push({ timeMs: note.timeMs, notes: [stripOriginal(note)] })
     }
   }
 

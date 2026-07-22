@@ -34,14 +34,40 @@ function foldIntoWindow(globalDegree: number, windowStart: number): number {
 }
 
 /**
- * Places one note in the window. Bass notes get direction-aware folding: of the octave
- * placements available, prefer the lowest one that still sits below the melody, so the chord
- * keeps its shape. Nearest-octave folding (what the plain converter does) routinely lands the
- * bass *above* the tune, which is the main source of muddy, inverted-sounding output.
+ * Places one note in the window. Bass and inner notes get direction-aware folding: of the
+ * octave placements available, prefer the lowest one that still sits below the melody, so the
+ * chord keeps its shape. Nearest-octave folding (what the plain converter does) routinely lands
+ * accompaniment *above* the tune, which is the main source of muddy, inverted-sounding output —
+ * and since Sky has no per-note velocity, a wrongly-higher note reads as more prominent than the
+ * melody it's supposed to sit under.
+ *
+ * Melody notes get a different kind of direction-awareness: continuity with the *previous*
+ * melody note. A global scale degree usually has two valid octave placements inside a 15-cell
+ * window; folding always picks the lower one regardless of context, so two melodically-adjacent
+ * notes straddling the window's boundary can fold to placements many cells apart — a one-step
+ * melodic motion turning into a large, audible wrong-direction leap. Preferring whichever valid
+ * placement is closer to the previous melody note keeps that motion small, the way it actually
+ * sounded in the source.
  */
-function placeDegree(globalDegree: number, windowStart: number, role: VoiceRole, melodyDegree: number | null): number {
+function placeDegree(
+  globalDegree: number,
+  windowStart: number,
+  role: VoiceRole,
+  melodyDegree: number | null,
+  lastMelodyAbsolute: number | null
+): number {
   const nearest = foldIntoWindow(globalDegree, windowStart)
-  if (role !== 'bass' || melodyDegree === null) return nearest
+
+  if (role === 'melody') {
+    if (lastMelodyAbsolute === null) return nearest
+    const alternate = nearest + 7
+    if (alternate > windowStart + GRID_DEGREE_SPAN) return nearest
+    const nearestDistance = Math.abs(nearest - lastMelodyAbsolute)
+    const alternateDistance = Math.abs(alternate - lastMelodyAbsolute)
+    return alternateDistance < nearestDistance ? alternate : nearest
+  }
+
+  if ((role !== 'bass' && role !== 'inner') || melodyDegree === null) return nearest
 
   // Walk down by octaves from the nearest placement while staying in the window and below the melody.
   let best = nearest
@@ -95,17 +121,34 @@ export function placeAndReduce(
   let gridCollisionsMerged = 0
   let voicingReduced = 0
 
+  // Tracks the previous event's melody placement so placeDegree can keep melodic motion small
+  // across the window boundary. A window shift is already a legitimate phrase boundary, so
+  // continuity resets there rather than anchoring the new window's melody to the old one's.
+  let lastMelodyAbsolute: number | null = null
+  let lastWindowStart: number | null = null
+
   const placedEvents = events.map((event) => {
     const windowStart = windowStartFor(event.timeMs)
+    if (lastWindowStart !== null && windowStart !== lastWindowStart) {
+      lastMelodyAbsolute = null
+    }
+    lastWindowStart = windowStart
 
     const degreeOf = (note: RoledNote): number => nearestDiatonicDegree(note.midi, rootPc).globalDegree
 
     const melodyNote = event.notes.find((n) => n.role === 'melody')
-    const melodyDegree = melodyNote ? placeDegree(degreeOf(melodyNote), windowStart, 'melody', null) : null
+    const melodyDegree = melodyNote
+      ? placeDegree(degreeOf(melodyNote), windowStart, 'melody', null, lastMelodyAbsolute)
+      : null
+    if (melodyDegree !== null) lastMelodyAbsolute = melodyDegree
 
     const placed: PlacedNote[] = event.notes.map((note) => {
       const degree = degreeOf(note)
-      const relativeDegree = placeDegree(degree, windowStart, note.role, melodyDegree) - windowStart
+      const absolute =
+        note.role === 'melody' && melodyDegree !== null
+          ? melodyDegree
+          : placeDegree(degree, windowStart, note.role, melodyDegree, lastMelodyAbsolute)
+      const relativeDegree = absolute - windowStart
       const octaveFolded = degree !== relativeDegree + windowStart
       if (octaveFolded) octaveFolds++
 

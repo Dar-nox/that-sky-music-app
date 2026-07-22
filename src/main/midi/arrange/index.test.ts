@@ -249,4 +249,52 @@ describe('arrangeMidiToSong', () => {
     expect(() => arrangeMidiToSong(twoTrackPiano(), options({ trackIndices: [] }))).toThrow()
     expect(() => arrangeMidiToSong(twoTrackPiano(), options({ trackIndices: [9] }))).toThrow()
   })
+
+  it('auto-resolves the melody track and reflects it in the report', () => {
+    // Right hand has no internal overlap (same as left hand) but a higher average pitch, so the
+    // fewest-simultaneous-notes heuristic ties and breaks toward it.
+    const song = arrangeMidiToSong(twoTrackPiano(), options({ trackIndices: [0, 1] }))
+
+    expect(song.meta.arrangement?.melodyTrackIndex).toBe(0)
+  })
+
+  it('respects an explicit melodyTrackIndex pin over the heuristic', () => {
+    const song = arrangeMidiToSong(
+      twoTrackPiano(),
+      options({ trackIndices: [0, 1], autoMelodyTrack: false, melodyTrackIndex: 1 })
+    )
+
+    expect(song.meta.arrangement?.melodyTrackIndex).toBe(1)
+  })
+
+  it('stays sane across a melody-track rest overlapping a voice-crossing accompaniment note', () => {
+    // Regression for the emergent bug: melody rests from 600-1200ms while the accompaniment
+    // keeps playing, including one note (90) well above anything the melody ever reaches. With
+    // melody pinned to track 0, neither the rest nor the crossing should corrupt the pipeline.
+    const melody: ParsedMidiNote[] = [note(72, 0, 250), note(74, 300, 250), note(76, 1200, 250)]
+    const accompaniment: ParsedMidiNote[] = [
+      note(48, 0, 250),
+      note(52, 300, 250),
+      note(90, 600, 250), // crosses above the melody's register during its rest
+      note(52, 900, 250)
+    ]
+    const parsed: ParsedMidiInternal = {
+      bpm: 120,
+      durationMs: 1500,
+      detectedKey: 'C',
+      tracks: [
+        { index: 0, name: 'Melody', notes: melody },
+        { index: 1, name: 'Accompaniment', notes: accompaniment }
+      ]
+    }
+
+    const song = arrangeMidiToSong(
+      parsed,
+      options({ trackIndices: [0, 1], autoMelodyTrack: false, melodyTrackIndex: 0, rhythmGrid: 'off' })
+    )
+
+    expect(song.meta.arrangement?.melodyTrackIndex).toBe(0)
+    expect(song.notes.length).toBeGreaterThan(0)
+    expect(song.notes.length).toBeLessThanOrEqual(melody.length + accompaniment.length)
+  })
 })

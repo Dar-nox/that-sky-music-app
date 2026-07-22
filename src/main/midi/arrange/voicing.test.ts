@@ -75,4 +75,39 @@ describe('placeAndReduce', () => {
       expect(note.col).toBeLessThanOrEqual(5)
     }
   })
+
+  it('folds an inner voice below the melody rather than merely at the nearest octave', () => {
+    // 79 (melody) folds to relative degree 11. 69, if folded to the nearest octave with no
+    // regard for direction, lands at 12 — above the melody, which on a velocity-less instrument
+    // reads as more prominent than the tune itself. 36 (the bass) is already direction-aware and
+    // correctly folds below both.
+    const result = place([79, 69, 36], 4)
+
+    const melody = result.events[0].notes.find((n) => n.role === 'melody')!
+    const inner = result.events[0].notes.find((n) => n.role === 'inner')!
+
+    expect(inner.relativeDegree).toBeLessThan(melody.relativeDegree)
+  })
+
+  it('keeps sequential melody notes close across the window boundary instead of leaping', () => {
+    // Two notes one diatonic step apart in global scale-degree terms (-5 -> 2). The first sits
+    // mid-window with no folding needed (relative degree 8). Folded with no memory of context,
+    // the second's only reachable representative is 2 (via adding whole octaves until it's back
+    // in range) — a 6-degree drop for what was really a single step up. The valid alternate
+    // representative, 9, sits right next to the first note and should be preferred instead.
+    const rootPc = 8
+    const events = [
+      { timeMs: 0, notes: [note(22)] }, // global degree 8, already inside the window
+      { timeMs: 300, notes: [note(0)] } // global degree -5, naively folds to 2
+    ]
+
+    const roled = assignVoiceRoles(events)
+    const result = placeAndReduce(roled, rootPc, () => 0, 4)
+
+    const first = result.events[0].notes[0].relativeDegree
+    const second = result.events[1].notes[0].relativeDegree
+
+    expect(first).toBe(8)
+    expect(Math.abs(second - first)).toBeLessThanOrEqual(2)
+  })
 })

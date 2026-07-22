@@ -6,13 +6,14 @@ import {
 } from '@shared/arranger'
 import { majorRootPcToKeyName, parseKeyToMajorRootPc } from '@shared/midi'
 import type { SkyNote, Song } from '@shared/song'
-import type { ParsedMidiInternal, ParsedMidiTrackInternal } from '../parse'
+import type { ParsedMidiInternal } from '../parse'
 import { detectKey, keyFitPercent } from './keyDetect'
-import { buildChordEvents } from './rhythm'
+import { buildChordEvents, type ArrangeNote } from './rhythm'
 import { assignVoiceRoles, melodyLine } from './voices'
 import { planWindows, windowStartAt } from './window'
 import { placeAndReduce, type PlacedNote } from './voicing'
 import { selectAccompaniment } from './accompaniment'
+import { suggestMelodyTrackIndex } from '../parse'
 
 /** Fixed tap length for non-sustained notes, matching the plain converter (CLAUDE.md §5). */
 const TAP_DURATION_MS = 150
@@ -20,19 +21,19 @@ const TAP_DURATION_MS = 150
 /** Gap left before the next onset when legato-filling a held note, so the retrigger registers. */
 const LEGATO_RELEASE_GAP_MS = 40
 
-/** Merges the selected tracks into one time-ordered note stream. */
-function mergeTracks(parsed: ParsedMidiInternal, trackIndices: number[]): ParsedMidiTrackInternal['notes'] {
+/** Merges the selected tracks into one time-ordered note stream, tagged with source track. */
+function mergeTracks(parsed: ParsedMidiInternal, trackIndices: number[]): ArrangeNote[] {
   if (trackIndices.length === 0) {
     throw new Error('At least one track must be selected')
   }
 
-  const merged: ParsedMidiTrackInternal['notes'] = []
+  const merged: ArrangeNote[] = []
   for (const trackIndex of trackIndices) {
     const track = parsed.tracks[trackIndex]
     if (!track) {
       throw new Error(`Track index ${trackIndex} does not exist in this MIDI file`)
     }
-    merged.push(...track.notes)
+    merged.push(...track.notes.map((note) => ({ ...note, sourceTrack: trackIndex })))
   }
   return merged.sort((a, b) => a.timeMs - b.timeMs)
 }
@@ -61,8 +62,13 @@ export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOp
     options.onsetMergeMs
   )
 
-  const roled = assignVoiceRoles(rawEvents)
-  const windowPlan = planWindows(melodyLine(roled), rootPc, options.windowMode)
+  const selectedTracks = parsed.tracks.filter((t) => options.trackIndices.includes(t.index))
+  const resolvedMelodyTrackIndex = options.autoMelodyTrack
+    ? suggestMelodyTrackIndex(selectedTracks)
+    : options.melodyTrackIndex
+
+  const roled = assignVoiceRoles(rawEvents, resolvedMelodyTrackIndex)
+  const windowPlan = planWindows(melodyLine(roled), rootPc, options.windowMode, options.melodyPlacement)
 
   const { events: placed, octaveFolds, gridCollisionsMerged, voicingReduced } = placeAndReduce(
     roled,
@@ -140,6 +146,7 @@ export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOp
 
   const report: ArrangementReport = {
     key: keyName,
+    melodyTrackIndex: resolvedMelodyTrackIndex,
     keyFitPercent: keyFit,
     notesIn,
     notesOut: totalNotes,

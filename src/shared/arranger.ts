@@ -30,6 +30,17 @@ export type AccompanimentMode = 'full' | 'harmony' | 'bass' | 'none'
  */
 export type WindowMode = 'adaptive' | 'fixed'
 
+/**
+ * Where the melody sits inside its 15-cell window.
+ *
+ * Sky has no per-note velocity — pitch is the only thing that makes a note read as louder in
+ * the mix, so a melody centered in the window spends half its time in the quiet lower cells and
+ * leaves little headroom below it for accompaniment. `high` seats the melody's upper register
+ * near the top of the window instead, so it sits in the loud cells and the accompaniment has
+ * the low cells to itself. `center` is the original behavior and stays the default.
+ */
+export type MelodyPlacement = 'center' | 'high'
+
 export interface ArrangeOptions {
   /** One or more track indices merged into a single note stream before arranging. */
   trackIndices: number[]
@@ -37,6 +48,19 @@ export interface ArrangeOptions {
   key: string
   /** Use the arranger's duration-weighted key detection instead of `key`. */
   autoKey: boolean
+  /**
+   * Use the same fewest-simultaneous-notes heuristic Convert Mode suggests tracks with (see
+   * src/main/midi/parse.ts) to pick which selected track anchors melody-role assignment.
+   * Ignored when `melodyTrackIndex` is set.
+   */
+  autoMelodyTrack: boolean
+  /**
+   * Pins melody-role assignment to notes from this track. `null` means no track preference —
+   * every selected track's notes are melody candidates, decided by pitch continuity alone. This
+   * is the pre-melody-track-detection behavior, kept as an explicit opt-out for songs where no
+   * single track reliably carries the tune.
+   */
+  melodyTrackIndex: number | null
   sustainCapable: boolean
   sustainThresholdMs: number
   /** Max simultaneous notes kept per chord event, after grid-collision dedupe. */
@@ -49,6 +73,7 @@ export interface ArrangeOptions {
   density: DensityMode
   accompaniment: AccompanimentMode
   windowMode: WindowMode
+  melodyPlacement: MelodyPlacement
   sourceFileName: string
   title: string
   artist: string
@@ -57,6 +82,8 @@ export interface ArrangeOptions {
 export interface ArrangementReport {
   /** Major root actually used, e.g. "C". */
   key: string
+  /** Track index actually used to anchor melody-role assignment, or null if none was pinned. */
+  melodyTrackIndex: number | null
   /** % of weighted note time that is diatonic in `key` — low values mean a shaky auto-detect. */
   keyFitPercent: number
   notesIn: number
@@ -93,16 +120,22 @@ export const DEFAULT_ARRANGE_OPTIONS: Pick<
   | 'density'
   | 'accompaniment'
   | 'windowMode'
+  | 'melodyPlacement'
   | 'autoKey'
+  | 'autoMelodyTrack'
+  | 'melodyTrackIndex'
 > = {
   autoKey: true,
+  autoMelodyTrack: true,
+  melodyTrackIndex: null,
   maxChordNotes: 4,
   rhythmGrid: '1/16',
   onsetMergeMs: 30,
   minRetriggerMs: 70,
   density: 'medium',
   accompaniment: 'harmony',
-  windowMode: 'adaptive'
+  windowMode: 'adaptive',
+  melodyPlacement: 'center'
 }
 
 /**

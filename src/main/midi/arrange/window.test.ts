@@ -65,6 +65,20 @@ describe('planWindows', () => {
     expect(plan.segments).toHaveLength(1)
     expect(windowStartAt(plan, 5000)).toBe(0)
   })
+
+  it('handles a sparse, gappy melody line without assuming dense coverage', () => {
+    // What melodyLine() now actually produces once a real melody-track rest correctly excludes
+    // an instant, instead of always having an entry: isolated onsets separated by real silence.
+    const melody = [
+      { timeMs: 0, midi: 60 },
+      { timeMs: 250, midi: 64 },
+      { timeMs: 2000, midi: 67 },
+      { timeMs: 5000, midi: 62 }
+    ]
+
+    expect(() => planWindows(melody, 0, 'adaptive')).not.toThrow()
+    expect(planWindows(melody, 0, 'adaptive').segments.length).toBeGreaterThan(0)
+  })
 })
 
 describe('windowStartAt', () => {
@@ -81,5 +95,16 @@ describe('windowStartAt', () => {
     expect(windowStartAt(plan, 999)).toBe(0)
     expect(windowStartAt(plan, 1000)).toBe(7)
     expect(windowStartAt(plan, 99999)).toBe(7)
+  })
+
+  it('gives a sane anchor for a timestamp that falls inside a melody rest', () => {
+    const lowPhrase = [48, 50, 52, 53].map((midi, i) => ({ timeMs: i * 200, midi }))
+    const highPhrase = [72, 74, 76, 77].map((midi, i) => ({ timeMs: 1800 + i * 200, midi }))
+    const plan = planWindows([...lowPhrase, ...highPhrase], 0, 'adaptive')
+
+    // An accompaniment-only chord event sounding during the melody's rest (after the low phrase
+    // ends at 800ms, before the high phrase's re-anchor takes effect at 1800ms) must still
+    // resolve to the still-current window, not the upcoming one or an undefined gap.
+    expect(windowStartAt(plan, 1200)).toBe(plan.segments[0].windowStart)
   })
 })

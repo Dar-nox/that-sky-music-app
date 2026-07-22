@@ -5,6 +5,7 @@ import {
   type AccompanimentMode,
   type ArrangeOptions,
   type DensityMode,
+  type MelodyPlacement,
   type RhythmGrid,
   type WindowMode
 } from '@shared/arranger'
@@ -49,6 +50,10 @@ export function ArrangerMode() {
   const [selectedTrackIndices, setSelectedTrackIndices] = useState<number[]>([0])
   const [autoKey, setAutoKey] = useState(DEFAULT_ARRANGE_OPTIONS.autoKey)
   const [key, setKey] = useState('C')
+  const [autoMelodyTrack, setAutoMelodyTrack] = useState(DEFAULT_ARRANGE_OPTIONS.autoMelodyTrack)
+  const [melodyTrackIndex, setMelodyTrackIndex] = useState<number | null>(
+    DEFAULT_ARRANGE_OPTIONS.melodyTrackIndex
+  )
   const [title, setTitle] = useState('')
   const [artist, setArtist] = useState('')
   const [sustainCapable, setSustainCapable] = useState(false)
@@ -60,6 +65,9 @@ export function ArrangerMode() {
     DEFAULT_ARRANGE_OPTIONS.accompaniment
   )
   const [windowMode, setWindowMode] = useState<WindowMode>(DEFAULT_ARRANGE_OPTIONS.windowMode)
+  const [melodyPlacement, setMelodyPlacement] = useState<MelodyPlacement>(
+    DEFAULT_ARRANGE_OPTIONS.melodyPlacement
+  )
 
   const [arranging, setArranging] = useState(false)
   const [song, setSong] = useState<Song | null>(null)
@@ -105,9 +113,15 @@ export function ArrangerMode() {
   }
 
   function toggleTrack(index: number): void {
+    const wasSelected = selectedTrackIndices.includes(index)
     setSelectedTrackIndices((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index].sort((a, b) => a - b)
+      wasSelected ? prev.filter((i) => i !== index) : [...prev, index].sort((a, b) => a - b)
     )
+    // A pin only makes sense while its track is part of the arrangement.
+    if (wasSelected && melodyTrackIndex === index) {
+      setAutoMelodyTrack(true)
+      setMelodyTrackIndex(null)
+    }
   }
 
   async function handleArrange(): Promise<void> {
@@ -122,6 +136,8 @@ export function ArrangerMode() {
       trackIndices: selectedTrackIndices,
       key,
       autoKey,
+      autoMelodyTrack,
+      melodyTrackIndex,
       sustainCapable,
       sustainThresholdMs,
       maxChordNotes,
@@ -131,6 +147,7 @@ export function ArrangerMode() {
       density,
       accompaniment,
       windowMode,
+      melodyPlacement,
       sourceFileName: fileName ?? 'unknown.mid',
       title: title || 'Untitled',
       artist
@@ -209,6 +226,41 @@ export function ArrangerMode() {
             {selectedTrackIndices.length === 0 && (
               <p className="mt-1 text-xs text-red-400">Select at least one track.</p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300">Melody track</label>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Which track carries the tune. Pinning it stops a momentarily higher accompaniment
+              note (a chord voicing, a grace note) from stealing the melody role mid-phrase.
+            </p>
+            <select
+              value={autoMelodyTrack ? 'auto' : melodyTrackIndex === null ? 'none' : String(melodyTrackIndex)}
+              onChange={(e) => {
+                const value = e.target.value
+                if (value === 'auto') {
+                  setAutoMelodyTrack(true)
+                  setMelodyTrackIndex(null)
+                } else if (value === 'none') {
+                  setAutoMelodyTrack(false)
+                  setMelodyTrackIndex(null)
+                } else {
+                  setAutoMelodyTrack(false)
+                  setMelodyTrackIndex(Number(value))
+                }
+              }}
+              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
+            >
+              <option value="auto">Auto-detect (recommended)</option>
+              {parsed.tracks
+                .filter((t) => selectedTrackIndices.includes(t.index))
+                .map((t) => (
+                  <option key={t.index} value={t.index}>
+                    {t.name}
+                  </option>
+                ))}
+              <option value="none">No preference (pitch only)</option>
+            </select>
           </div>
 
           <div>
@@ -331,6 +383,23 @@ export function ArrangerMode() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-slate-300">Melody placement</label>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Sky has no per-note volume — pitch is the only thing that reads as louder. &quot;High&quot;
+              seats the melody near the top of its range so it sits above the accompaniment in the
+              mix, instead of centered where it competes with it.
+            </p>
+            <select
+              value={melodyPlacement}
+              onChange={(e) => setMelodyPlacement(e.target.value as MelodyPlacement)}
+              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
+            >
+              <option value="center">Center — original behavior</option>
+              <option value="high">High — melody sits near the top of the range</option>
+            </select>
+          </div>
+
+          <div>
             <label className="flex items-center gap-1.5 text-sm text-slate-300">
               <input type="checkbox" checked={sustainCapable} onChange={(e) => setSustainCapable(e.target.checked)} />
               Target instrument supports sustain (Triumph Violin, Cello, Harmonica, Electric
@@ -363,6 +432,16 @@ export function ArrangerMode() {
       {song && report && (
         <div className="mt-6 space-y-3 rounded border border-slate-700 bg-slate-800/50 p-4">
           <h2 className="text-sm font-semibold text-slate-200">Arrangement report</h2>
+
+          <div className="text-sm text-slate-300">
+            Melody track:{' '}
+            <span className="font-medium">
+              {report.melodyTrackIndex === null
+                ? 'None (pitch only)'
+                : (parsed?.tracks.find((t) => t.index === report.melodyTrackIndex)?.name ??
+                  `Track ${report.melodyTrackIndex + 1}`)}
+            </span>
+          </div>
 
           <div className="text-sm text-slate-300">
             Key: <span className="font-medium">{report.key} Major</span>{' '}
