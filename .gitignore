@@ -16,3 +16,8 @@ build
 # IDE
 .vscode/*
 !.vscode/extensions.json
+
+# AI tooling — Claude Code state/config and the project spec it works from
+CLAUDE.md
+.claude/
+.agents/
