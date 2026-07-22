@@ -3,26 +3,20 @@
 //
 // Where Convert Mode transcribes (snap every note, resolve out-of-range notes with
 // shift/clamp/drop), the Arranger *arranges*: it re-anchors the playable octave window
-// on the melody, folds the accompaniment around it, reduces chord voicings to the notes
-// that actually define the harmony, tightens rhythm, and thins density. Same Song schema
-// out, so playback/library need no changes.
-
-/** Beat subdivision that note onsets are snapped to. */
-export type RhythmGrid = 'off' | '1/8' | '1/16' | '1/32'
-
-/** Caps how much accompaniment per second survives thinning. Never affects the melody. */
-export type DensityMode = 'sparse' | 'medium' | 'full'
+// on the melody, folds the accompaniment around it (direction- and continuity-aware,
+// unlike the plain converter's nearest-octave fold), and reduces chord voicings to the
+// notes that actually define the harmony. It only ever repositions pitches onto the grid —
+// it never touches note timing or duration. Same Song schema out, so playback/library
+// need no changes.
 
 /**
  * How much accompaniment to put under the melody.
  *
- * Fifteen cells spanning two octaves cannot hold a piano's full texture: voicing a chord under
- * every single melody onset guarantees the accompaniment competes with the tune for the same
- * keys. `harmony` is the default because it's what a human arranging for a limited instrument
- * does — keep the melody continuous, place chords underneath only when the harmony actually
- * moves.
+ * `full` keeps the reduced voicing from `maxChordNotes`/register separation as-is, `bass` keeps
+ * only the bass voice, `none` strips accompaniment entirely for a clean monophonic melody. All
+ * three are pitch/voicing decisions — none of them touch when or how often a note fires.
  */
-export type AccompanimentMode = 'full' | 'harmony' | 'bass' | 'none'
+export type AccompanimentMode = 'full' | 'bass' | 'none'
 
 /**
  * `adaptive` re-anchors the 15-note window per phrase (octave jumps land in silence);
@@ -65,12 +59,6 @@ export interface ArrangeOptions {
   sustainThresholdMs: number
   /** Max simultaneous notes kept per chord event, after grid-collision dedupe. */
   maxChordNotes: number
-  rhythmGrid: RhythmGrid
-  /** Onsets closer together than this collapse into one chord event (rolled chords -> blocks). */
-  onsetMergeMs: number
-  /** The same grid cell can't re-fire faster than this; closer repeats are dropped. */
-  minRetriggerMs: number
-  density: DensityMode
   accompaniment: AccompanimentMode
   windowMode: WindowMode
   melodyPlacement: MelodyPlacement
@@ -92,16 +80,10 @@ export interface ArrangementReport {
   gridCollisionsMerged: number
   /** Notes dropped by the maxChordNotes voicing reduction. */
   voicingReduced: number
-  /** Accompaniment notes dropped by the accompaniment mode / harmony gating / rate cap. */
+  /** Accompaniment notes dropped by the accompaniment mode filter. */
   densityThinned: number
   /** Accompaniment notes dropped for sitting in (or above) the melody's register. */
   registerSuppressed: number
-  /** Accompaniment notes dropped because a melody note already held that cell. */
-  melodyProtected: number
-  /** Repeats of a cell that came in faster than minRetriggerMs. */
-  retriggersRemoved: number
-  onsetsSnapped: number
-  onsetsMerged: number
   /** Notes moved by one or more whole octaves to fit the window. */
   octaveFolds: number
   /** How many times the adaptive window re-anchored at a phrase boundary. */
@@ -114,10 +96,6 @@ export interface ArrangementReport {
 export const DEFAULT_ARRANGE_OPTIONS: Pick<
   ArrangeOptions,
   | 'maxChordNotes'
-  | 'rhythmGrid'
-  | 'onsetMergeMs'
-  | 'minRetriggerMs'
-  | 'density'
   | 'accompaniment'
   | 'windowMode'
   | 'melodyPlacement'
@@ -129,30 +107,7 @@ export const DEFAULT_ARRANGE_OPTIONS: Pick<
   autoMelodyTrack: true,
   melodyTrackIndex: null,
   maxChordNotes: 4,
-  rhythmGrid: '1/16',
-  onsetMergeMs: 30,
-  minRetriggerMs: 70,
-  density: 'medium',
-  accompaniment: 'harmony',
+  accompaniment: 'full',
   windowMode: 'adaptive',
   melodyPlacement: 'center'
-}
-
-/**
- * Accompaniment strikes per second allowed by each density mode (`Infinity` = uncapped).
- *
- * These govern accompaniment only — the melody is never rate-limited. An earlier version
- * capped *all* events, which at 140bpm silently deleted half of every sixteenth-note run.
- */
-export const DENSITY_ACCOMPANIMENT_PER_SECOND: Record<DensityMode, number> = {
-  sparse: 2,
-  medium: 4,
-  full: Infinity
-}
-
-/** Denominator of a whole note for each rhythm grid setting. */
-export const RHYTHM_GRID_DIVISIONS: Record<Exclude<RhythmGrid, 'off'>, number> = {
-  '1/8': 8,
-  '1/16': 16,
-  '1/32': 32
 }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut } from 'electron'
+import { app, BrowserWindow, globalShortcut, Menu } from 'electron'
 import { join } from 'node:path'
 import { registerIpcHandlers } from './ipc'
 import { setMainWindow } from './windowRef'
@@ -15,7 +15,6 @@ function createWindow(): void {
     minWidth: 820,
     minHeight: 560,
     show: false,
-    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -43,6 +42,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Remove Electron's default File/Edit/View/Window menu entirely. `autoHideMenuBar`
+  // on the window only hides it visually — Alt still toggles it back on, which this
+  // app's users trigger constantly since Play Mode's workflow is built around
+  // alt-tabbing into the Sky window (CLAUDE.md §7).
+  Menu.setApplicationMenu(null)
+
   registerIpcHandlers()
   createWindow()
 

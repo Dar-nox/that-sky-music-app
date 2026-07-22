@@ -62,7 +62,7 @@ describe('Settings', () => {
     )
   })
 
-  it('warns when a captured key is already bound to another cell', async () => {
+  it('warns when a captured key is already bound to another cell, and does not save the duplicate', async () => {
     render(<Settings />)
 
     const cellA2 = await screen.findByRole('button', { name: 'Note key A2' })
@@ -71,6 +71,8 @@ describe('Settings', () => {
     fireEvent.keyDown(window, { key: 'y' })
 
     await waitFor(() => expect(screen.getByText(/already bound to cell A1/)).toBeInTheDocument())
+    expect(cellA2).toHaveTextContent('U')
+    expect(window.skyAPI.setSettings).not.toHaveBeenCalled()
   })
 
   it('resets note keys to the default layout', async () => {

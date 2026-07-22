@@ -84,8 +84,8 @@ export function Settings() {
         setWarning(`"${key}" is already bound to the ${dupHotkey} hotkey.`)
       } else {
         setWarning(null)
+        void persist({ ...settings, noteKeys: { ...settings.noteKeys, [id]: key } })
       }
-      void persist({ ...settings, noteKeys: { ...settings.noteKeys, [id]: key } })
     } else {
       const { action } = listening
       const dupHotkey = findHotkeyOwner(key, action)
@@ -96,8 +96,8 @@ export function Settings() {
         setWarning(`"${key}" is already bound to cell ${dupNote}.`)
       } else {
         setWarning(null)
+        void persist({ ...settings, transportHotkeys: { ...settings.transportHotkeys, [action]: key } })
       }
-      void persist({ ...settings, transportHotkeys: { ...settings.transportHotkeys, [action]: key } })
     }
 
     setListening(null)

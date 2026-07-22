@@ -72,6 +72,7 @@ export class PlaybackScheduler {
       this.elapsedAtAnchorMs = this.currentElapsedMs()
       this.state = 'paused'
       this.stopTimer()
+      this.releaseAllHeld()
       this.emitStatus()
     }
     return this.getStatus()

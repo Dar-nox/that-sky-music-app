@@ -48,13 +48,20 @@ function foldIntoWindow(globalDegree: number, windowStart: number): number {
  * melodic motion turning into a large, audible wrong-direction leap. Preferring whichever valid
  * placement is closer to the previous melody note keeps that motion small, the way it actually
  * sounded in the source.
+ *
+ * The bass voice gets the same continuity treatment, for the same reason: of the placements that
+ * still clear the melody, prefer whichever is closest to where the bass sat last, so the line
+ * moves smoothly instead of leaping an octave whenever the melody's own register happens to
+ * shift. Inner voices don't get this — they're the first thing `maxChordNotes` trims away, so
+ * tracking their continuity has little payoff.
  */
 function placeDegree(
   globalDegree: number,
   windowStart: number,
   role: VoiceRole,
   melodyDegree: number | null,
-  lastMelodyAbsolute: number | null
+  lastMelodyAbsolute: number | null,
+  lastBassAbsolute: number | null
 ): number {
   const nearest = foldIntoWindow(globalDegree, windowStart)
 
@@ -69,16 +76,19 @@ function placeDegree(
 
   if ((role !== 'bass' && role !== 'inner') || melodyDegree === null) return nearest
 
-  // Walk down by octaves from the nearest placement while staying in the window and below the melody.
-  let best = nearest
+  // Every octave placement of this degree that both fits the window and sits below the melody,
+  // nearest first.
+  const belowMelody: number[] = []
   for (let candidate = nearest; candidate >= windowStart; candidate -= 7) {
-    if (candidate < melodyDegree) {
-      best = candidate
-      break
-    }
-    best = candidate
+    if (candidate < melodyDegree) belowMelody.push(candidate)
   }
-  return best
+  if (belowMelody.length === 0) return windowStart
+
+  if (role !== 'bass' || lastBassAbsolute === null) return belowMelody[0]
+
+  return belowMelody.reduce((best, candidate) =>
+    Math.abs(candidate - lastBassAbsolute) < Math.abs(best - lastBassAbsolute) ? candidate : best
+  )
 }
 
 /**
@@ -121,16 +131,18 @@ export function placeAndReduce(
   let gridCollisionsMerged = 0
   let voicingReduced = 0
 
-  // Tracks the previous event's melody placement so placeDegree can keep melodic motion small
-  // across the window boundary. A window shift is already a legitimate phrase boundary, so
-  // continuity resets there rather than anchoring the new window's melody to the old one's.
+  // Tracks the previous event's melody/bass placement so placeDegree can keep motion small
+  // across chords and across the window boundary. A window shift is already a legitimate phrase
+  // boundary, so continuity resets there rather than anchoring the new window off the old one's.
   let lastMelodyAbsolute: number | null = null
+  let lastBassAbsolute: number | null = null
   let lastWindowStart: number | null = null
 
   const placedEvents = events.map((event) => {
     const windowStart = windowStartFor(event.timeMs)
     if (lastWindowStart !== null && windowStart !== lastWindowStart) {
       lastMelodyAbsolute = null
+      lastBassAbsolute = null
     }
     lastWindowStart = windowStart
 
@@ -138,7 +150,7 @@ export function placeAndReduce(
 
     const melodyNote = event.notes.find((n) => n.role === 'melody')
     const melodyDegree = melodyNote
-      ? placeDegree(degreeOf(melodyNote), windowStart, 'melody', null, lastMelodyAbsolute)
+      ? placeDegree(degreeOf(melodyNote), windowStart, 'melody', null, lastMelodyAbsolute, null)
       : null
     if (melodyDegree !== null) lastMelodyAbsolute = melodyDegree
 
@@ -147,7 +159,8 @@ export function placeAndReduce(
       const absolute =
         note.role === 'melody' && melodyDegree !== null
           ? melodyDegree
-          : placeDegree(degree, windowStart, note.role, melodyDegree, lastMelodyAbsolute)
+          : placeDegree(degree, windowStart, note.role, melodyDegree, lastMelodyAbsolute, lastBassAbsolute)
+      if (note.role === 'bass') lastBassAbsolute = absolute
       const relativeDegree = absolute - windowStart
       const octaveFolded = degree !== relativeDegree + windowStart
       if (octaveFolded) octaveFolds++
@@ -175,12 +188,13 @@ export function placeAndReduce(
         continue
       }
       gridCollisionsMerged++
-      // Keep whichever note matters more, and the longer duration so sustain isn't cut short.
+      // Keep whichever note matters more, with its own real duration untouched — the arranger
+      // only repositions pitches, it never blends or extends note timing.
       const winner =
         voicingPriority(note, bassDegreeForPriority) < voicingPriority(existing, bassDegreeForPriority)
           ? note
           : existing
-      byCell.set(cell, { ...winner, durationMs: Math.max(note.durationMs, existing.durationMs) })
+      byCell.set(cell, winner)
     }
 
     // 2. Cap the chord by musical priority.

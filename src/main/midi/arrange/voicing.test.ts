@@ -89,6 +89,42 @@ describe('placeAndReduce', () => {
     expect(inner.relativeDegree).toBeLessThan(melody.relativeDegree)
   })
 
+  it("keeps the winning note's own duration on a grid collision, not blended with the dropped note's", () => {
+    // 48 (bass) and 60 (inner) both fold onto the same below-melody cell once 84 (melody)
+    // anchors the window. Bass outranks inner in voicing priority, so 48 wins the collision and
+    // its own duration (300ms) must survive untouched — not stretched/blended to the dropped
+    // inner note's 900ms.
+    const roled = assignVoiceRoles([
+      { timeMs: 0, notes: [note(48, 0, 300), note(60, 0, 900), note(84, 0, 200)] }
+    ])
+    const result = placeAndReduce(roled, 0, () => 0, 4)
+
+    expect(result.gridCollisionsMerged).toBeGreaterThan(0)
+    const winner = result.events[0].notes.find((n) => n.role === 'bass')
+    expect(winner?.durationMs).toBe(300)
+  })
+
+  it('keeps the bass placement stable across chords instead of leaping whenever the melody register shifts', () => {
+    // Bass pitch 17 (global degree 10, already inside the window) struck three times in a row,
+    // while the melody alternates between pitch 26 (degree 8) and pitch 24 (degree 14). Without
+    // continuity, "first placement below the melody" flips between degree 3 (only valid choice
+    // when the melody sits at 8) and degree 10 (valid once the melody jumps to 14) purely because
+    // the melody's own register changed — not because the bass note moved at all. With
+    // continuity, the bass should settle on one placement and stay there.
+    const rootPc = 0
+    const events = [
+      { timeMs: 0, notes: [note(26, 0), note(17, 0)] }, // melody degree 8, bass degree 10
+      { timeMs: 300, notes: [note(24, 300), note(17, 300)] }, // melody jumps to degree 14
+      { timeMs: 600, notes: [note(26, 600), note(17, 600)] } // melody back to degree 8
+    ]
+
+    const roled = assignVoiceRoles(events)
+    const result = placeAndReduce(roled, rootPc, () => 0, 4)
+
+    const bassPlacements = result.events.map((e) => e.notes.find((n) => n.role === 'bass')!.relativeDegree)
+    expect(new Set(bassPlacements).size).toBe(1)
+  })
+
   it('keeps sequential melody notes close across the window boundary instead of leaping', () => {
     // Two notes one diatonic step apart in global scale-degree terms (-5 -> 2). The first sits
     // mid-window with no folding needed (relative degree 8). Folded with no memory of context,

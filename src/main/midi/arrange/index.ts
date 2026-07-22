@@ -1,9 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import {
-  DENSITY_ACCOMPANIMENT_PER_SECOND,
-  type ArrangeOptions,
-  type ArrangementReport
-} from '@shared/arranger'
+import type { ArrangeOptions, ArrangementReport } from '@shared/arranger'
 import { majorRootPcToKeyName, parseKeyToMajorRootPc } from '@shared/midi'
 import type { SkyNote, Song } from '@shared/song'
 import type { ParsedMidiInternal } from '../parse'
@@ -17,9 +13,6 @@ import { suggestMelodyTrackIndex } from '../parse'
 
 /** Fixed tap length for non-sustained notes, matching the plain converter (CLAUDE.md §5). */
 const TAP_DURATION_MS = 150
-
-/** Gap left before the next onset when legato-filling a held note, so the retrigger registers. */
-const LEGATO_RELEASE_GAP_MS = 40
 
 /** Merges the selected tracks into one time-ordered note stream, tagged with source track. */
 function mergeTracks(parsed: ParsedMidiInternal, trackIndices: number[]): ArrangeNote[] {
@@ -41,10 +34,11 @@ function mergeTracks(parsed: ParsedMidiInternal, trackIndices: number[]): Arrang
 /**
  * Arranges a parsed MIDI file into a Sky note sheet.
  *
- * Unlike `convertMidiToSong`, which transcribes note-for-note, this reshapes the music to suit
- * the instrument: melody-anchored octave windows that only shift during silence, voice-aware
- * octave folding, harmonic voicing reduction, rhythmic tightening and density thinning. Same
- * Song schema out, so playback and the library are unaffected.
+ * Unlike `convertMidiToSong`, which transcribes note-for-note, this reshapes which grid cells the
+ * music lands on: melody-anchored octave windows that only shift during silence, voice-aware
+ * octave folding, and harmonic voicing reduction. It never touches note timing or duration — a
+ * note's `timeMs`/`durationMs` are always its real source values, exactly like the plain
+ * converter. Same Song schema out, so playback and the library are unaffected.
  */
 export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOptions): Song {
   const merged = mergeTracks(parsed, options.trackIndices)
@@ -55,12 +49,7 @@ export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOp
   const keyName = majorRootPcToKeyName(rootPc)
   const keyFit = options.autoKey ? detected.fitPercent : keyFitPercent(merged, rootPc)
 
-  const { events: rawEvents, onsetsSnapped, onsetsMerged } = buildChordEvents(
-    merged,
-    parsed.bpm,
-    options.rhythmGrid,
-    options.onsetMergeMs
-  )
+  const { events: rawEvents } = buildChordEvents(merged)
 
   const selectedTracks = parsed.tracks.filter((t) => options.trackIndices.includes(t.index))
   const resolvedMelodyTrackIndex = options.autoMelodyTrack
@@ -77,20 +66,17 @@ export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOp
     options.maxChordNotes
   )
 
-  const beatMs = parsed.bpm > 0 ? 60000 / parsed.bpm : 500
   const { events: thinned, densityThinned, registerSuppressed } = selectAccompaniment(
     placed,
-    options.accompaniment,
-    beatMs,
-    DENSITY_ACCOMPANIMENT_PER_SECOND[options.density]
+    options.accompaniment
   )
 
-  // Emission runs in two passes so that accompaniment can never displace the tune.
-  //
-  // A single pass with one shared retrigger map meant whichever note reached a cell first won:
-  // a chord note taking cell B3 would silently swallow the melody note that needed B3 40ms
-  // later. On a 15-cell grid that collision is constant, and it's what made the melody sound
-  // full of holes. The melody now claims its cells first, and accompaniment fills in around it.
+  // Emission runs in two passes so that accompaniment can never displace the tune: a chord note
+  // and a melody note that land on the same cell at the same instant would otherwise collide
+  // arbitrarily depending on iteration order. The melody claims its cells first, and
+  // accompaniment fills in around whatever's left. Neither pass drops a note for arriving close
+  // in time on a shared cell — every note that survives voicing/accompaniment gets emitted, at
+  // its own real time and duration.
   const toSkyNote = (note: PlacedNote, timeMs: number): SkyNote => {
     const hold = options.sustainCapable && note.durationMs >= options.sustainThresholdMs
     return {
@@ -102,44 +88,23 @@ export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOp
     }
   }
 
-  const firedAt = new Map<string, number>()
-  let retriggersRemoved = 0
-  let melodyProtected = 0
   const notes: SkyNote[] = []
 
-  // Pass 1: the melody, which only ever yields to another melody note on the same cell.
   for (const event of thinned) {
     for (const note of event.notes) {
       if (note.role !== 'melody') continue
-      const cell = `${note.row}${note.col}`
-      const previous = firedAt.get(cell)
-      if (previous !== undefined && event.timeMs - previous < options.minRetriggerMs) {
-        retriggersRemoved++
-        continue
-      }
-      firedAt.set(cell, event.timeMs)
       notes.push(toSkyNote(note, event.timeMs))
     }
   }
 
-  // Pass 2: accompaniment, into whatever the melody left free.
   for (const event of thinned) {
     for (const note of event.notes) {
       if (note.role === 'melody') continue
-      const cell = `${note.row}${note.col}`
-      const previous = firedAt.get(cell)
-      if (previous !== undefined && Math.abs(event.timeMs - previous) < options.minRetriggerMs) {
-        melodyProtected++
-        continue
-      }
-      firedAt.set(cell, event.timeMs)
       notes.push(toSkyNote(note, event.timeMs))
     }
   }
 
   notes.sort((a, b) => a.timeMs - b.timeMs)
-
-  if (options.sustainCapable) applyLegatoFill(notes)
 
   const chordEventsTotal = thinned.length
   const totalNotes = notes.length
@@ -154,10 +119,6 @@ export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOp
     voicingReduced,
     densityThinned,
     registerSuppressed,
-    melodyProtected,
-    retriggersRemoved,
-    onsetsSnapped,
-    onsetsMerged,
     octaveFolds,
     windowShifts: windowPlan.windowShifts,
     chordEventsTotal,
@@ -187,27 +148,6 @@ export function arrangeMidiToSong(parsed: ParsedMidiInternal, options: ArrangeOp
       }
     },
     notes
-  }
-}
-
-/**
- * Extends held notes to just before the next strike of the same cell.
- *
- * Raw MIDI durations often leave small gaps between notes that a player would slur together.
- * On a sustain-capable instrument those gaps become audible dropouts, so held notes are filled
- * forward — but never into the next strike of the same key, which needs a clean release.
- */
-function applyLegatoFill(notes: SkyNote[]): void {
-  const nextByCell = new Map<string, number>()
-  for (let i = notes.length - 1; i >= 0; i--) {
-    const note = notes[i]
-    const cell = `${note.row}${note.col}`
-    const nextTime = nextByCell.get(cell)
-    if (note.hold && nextTime !== undefined) {
-      const available = nextTime - LEGATO_RELEASE_GAP_MS - note.timeMs
-      if (available > note.durationMs) note.durationMs = available
-    }
-    nextByCell.set(cell, note.timeMs)
   }
 }
 

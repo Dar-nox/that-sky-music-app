@@ -62,7 +62,7 @@ describe('arrangeMidiToSong', () => {
   })
 
   it('never emits the same grid cell twice at the same instant', () => {
-    const song = arrangeMidiToSong(twoTrackPiano(), options({ trackIndices: [0, 1], density: 'full' }))
+    const song = arrangeMidiToSong(twoTrackPiano(), options({ trackIndices: [0, 1] }))
 
     const seen = new Set<string>()
     for (const n of song.notes) {
@@ -109,11 +109,14 @@ describe('arrangeMidiToSong', () => {
 
     const sustaining = arrangeMidiToSong(parsed, options({ sustainCapable: true, sustainThresholdMs: 300 }))
     expect(sustaining.notes[0].hold).toBe(true)
-    expect(sustaining.notes[0].durationMs).toBeGreaterThanOrEqual(900)
+    expect(sustaining.notes[0].durationMs).toBe(900)
     expect(sustaining.notes[1].hold).toBe(false)
   })
 
-  it('drops a repeat of the same cell that comes in faster than minRetriggerMs', () => {
+  it('never drops a repeated cell for firing close together in time', () => {
+    // The arranger used to drop a same-cell repeat that came in faster than a configurable
+    // threshold. It no longer touches timing at all, so every note that reaches this point
+    // should be emitted, no matter how close together.
     const parsed: ParsedMidiInternal = {
       bpm: 120,
       durationMs: 1000,
@@ -121,40 +124,12 @@ describe('arrangeMidiToSong', () => {
       tracks: [{ index: 0, name: 'Stutter', notes: [note(60, 0, 50), note(60, 40, 50), note(60, 600, 50)] }]
     }
 
-    const song = arrangeMidiToSong(
-      parsed,
-      options({ rhythmGrid: 'off', onsetMergeMs: 0, minRetriggerMs: 200, density: 'full' })
-    )
+    const song = arrangeMidiToSong(parsed, options({}))
 
-    expect(song.notes).toHaveLength(2)
-    expect(song.meta.arrangement?.retriggersRemoved).toBe(1)
+    expect(song.notes).toHaveLength(3)
   })
 
-  it('thins accompaniment when it comes faster than the budget allows', () => {
-    // A melody with a chord under every note, so there is accompaniment available to thin.
-    const notes: ParsedMidiNote[] = []
-    for (let i = 0; i < 16; i++) {
-      notes.push(note(72 + (i % 5), i * 200, 180))
-      notes.push(note(48, i * 200, 180))
-      notes.push(note(52, i * 200, 180))
-    }
-    const parsed: ParsedMidiInternal = {
-      bpm: 120,
-      durationMs: 3200,
-      detectedKey: 'C',
-      tracks: [{ index: 0, name: 'Melody + chords', notes }]
-    }
-
-    const sparse = arrangeMidiToSong(parsed, options({ density: 'sparse', accompaniment: 'full' }))
-    const full = arrangeMidiToSong(parsed, options({ density: 'full', accompaniment: 'full' }))
-
-    expect(sparse.notes.length).toBeLessThan(full.notes.length)
-    expect(sparse.meta.arrangement?.densityThinned).toBeGreaterThan(0)
-  })
-
-  it('never drops melody notes to density thinning, even in a fast run', () => {
-    // Regression: density thinning used to cap *all* events, so a 16th-note run at 140bpm lost
-    // half its notes — melody included — and the survivors were re-timed, mangling the rhythm.
+  it('never drops melody notes, even in a fast run', () => {
     const stepMs = ((60000 / 140) * 4) / 16
     const melody = Array.from({ length: 32 }, (_, i) =>
       note(72 + (i % 8), Math.round(i * stepMs), 80)
@@ -166,21 +141,19 @@ describe('arrangeMidiToSong', () => {
       tracks: [{ index: 0, name: 'Fast run', notes: melody }]
     }
 
-    for (const density of ['sparse', 'medium', 'full'] as const) {
-      const song = arrangeMidiToSong(parsed, options({ density, rhythmGrid: 'off' }))
-      expect(song.notes.length).toBe(melody.length)
-    }
+    const song = arrangeMidiToSong(parsed, options({}))
+    expect(song.notes.length).toBe(melody.length)
   })
 
   it('never lets accompaniment displace a melody note on the same cell', () => {
     // Regression for the "important notes can't be played because it coincides with chords"
-    // bug. A single emission pass with one shared retrigger map meant an accompaniment note
-    // could claim a cell and silently swallow the melody note that needed it a moment later.
+    // bug. A single emission pass with one shared cell map meant an accompaniment note could
+    // claim a cell and silently swallow the melody note that needed it a moment later.
     //
-    // The failure needs accompaniment *interleaved between* melody onsets closer than
-    // minRetriggerMs — i.e. broken/arpeggiated left-hand figures, which are everywhere in the
-    // solo-piano MIDIs this app targets. Simultaneous notes don't trigger it (collision dedupe
-    // already resolves those in the melody's favour), so the interleaving here is the point.
+    // The failure needs accompaniment *interleaved between* melody onsets close in time — i.e.
+    // broken/arpeggiated left-hand figures, which are everywhere in the solo-piano MIDIs this app
+    // targets. Simultaneous notes don't trigger it (collision dedupe already resolves those in
+    // the melody's favour), so the interleaving here is the point.
     const melodyOnly: ParsedMidiNote[] = []
     const withArpeggio: ParsedMidiNote[] = []
     for (let i = 0; i < 24; i++) {
@@ -188,22 +161,20 @@ describe('arrangeMidiToSong', () => {
       const m = note(72 + (i % 5), onset, 100)
       melodyOnly.push(m)
       withArpeggio.push(m)
-      // Broken accompaniment landing 60ms later, inside the 70ms retrigger window, on pitches
-      // that fold onto the cells the melody needs next.
+      // Broken accompaniment landing 60ms later, on pitches that fold onto the cells the melody
+      // needs next.
       withArpeggio.push(note(48 + (i % 5), onset + 60, 60))
     }
 
     const base = { bpm: 120, durationMs: 3000, detectedKey: 'C' as const }
-    // rhythmGrid off: snapping would quantise the arpeggio onto the melody's grid and mask it.
-    const opts = { rhythmGrid: 'off' as const, onsetMergeMs: 0, density: 'full' as const }
 
     const alone = arrangeMidiToSong(
       { ...base, tracks: [{ index: 0, name: 'M', notes: melodyOnly }] },
-      options({ ...opts, accompaniment: 'none' })
+      options({ accompaniment: 'none' })
     )
     const accompanied = arrangeMidiToSong(
       { ...base, tracks: [{ index: 0, name: 'M+arp', notes: withArpeggio }] },
-      options({ ...opts, accompaniment: 'full' })
+      options({ accompaniment: 'full' })
     )
 
     expect(alone.notes).toHaveLength(24)
@@ -229,13 +200,12 @@ describe('arrangeMidiToSong', () => {
       tracks: [{ index: 0, name: 'Dense', notes }]
     }
 
-    const counts = (['full', 'harmony', 'bass', 'none'] as const).map(
+    const counts = (['full', 'bass', 'none'] as const).map(
       (accompaniment) => arrangeMidiToSong(parsed, options({ accompaniment })).notes.length
     )
 
-    expect(counts[0]).toBeGreaterThan(counts[3]) // full is denser than none
-    expect(counts[1]).toBeLessThanOrEqual(counts[0]) // harmony gating thins full
-    expect(counts[3]).toBeLessThanOrEqual(counts[2]) // none is the sparsest
+    expect(counts[0]).toBeGreaterThan(counts[2]) // full is denser than none
+    expect(counts[2]).toBeLessThanOrEqual(counts[1]) // none is the sparsest
   })
 
   it('uses the manual key when autoKey is off', () => {
@@ -290,7 +260,7 @@ describe('arrangeMidiToSong', () => {
 
     const song = arrangeMidiToSong(
       parsed,
-      options({ trackIndices: [0, 1], autoMelodyTrack: false, melodyTrackIndex: 0, rhythmGrid: 'off' })
+      options({ trackIndices: [0, 1], autoMelodyTrack: false, melodyTrackIndex: 0 })
     )
 
     expect(song.meta.arrangement?.melodyTrackIndex).toBe(0)

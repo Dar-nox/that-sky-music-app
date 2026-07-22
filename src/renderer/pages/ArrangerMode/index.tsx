@@ -4,9 +4,7 @@ import {
   DEFAULT_ARRANGE_OPTIONS,
   type AccompanimentMode,
   type ArrangeOptions,
-  type DensityMode,
   type MelodyPlacement,
-  type RhythmGrid,
   type WindowMode
 } from '@shared/arranger'
 import { MAJOR_KEY_NAMES, majorRootPcToKeyName, parseKeyToMajorRootPc, type ParsedMidi } from '@shared/midi'
@@ -21,24 +19,10 @@ function normalizeToMajorKeyName(key: string): string {
   }
 }
 
-const RHYTHM_GRIDS: { value: RhythmGrid; label: string }[] = [
-  { value: 'off', label: 'Off — keep original timing' },
-  { value: '1/8', label: '1/8 notes — strongest tightening' },
-  { value: '1/16', label: '1/16 notes — recommended' },
-  { value: '1/32', label: '1/32 notes — light touch-up' }
-]
-
 const ACCOMPANIMENTS: { value: AccompanimentMode; label: string; hint: string }[] = [
-  { value: 'harmony', label: 'On harmony changes', hint: 'Chords land only when the harmony moves — recommended' },
-  { value: 'full', label: 'Full', hint: 'A voicing under every melody note; densest, muddiest' },
+  { value: 'full', label: 'Full', hint: 'A voicing under every melody note — recommended' },
   { value: 'bass', label: 'Bass only', hint: 'Just the bass line under the melody' },
   { value: 'none', label: 'None', hint: 'Melody alone — the cleanest, most reliable result' }
-]
-
-const DENSITIES: { value: DensityMode; label: string }[] = [
-  { value: 'sparse', label: 'Sparse' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'full', label: 'Full' }
 ]
 
 export function ArrangerMode() {
@@ -59,8 +43,6 @@ export function ArrangerMode() {
   const [sustainCapable, setSustainCapable] = useState(false)
   const [sustainThresholdMs, setSustainThresholdMs] = useState(DEFAULT_SETTINGS.sustainThresholdMs)
   const [maxChordNotes, setMaxChordNotes] = useState(DEFAULT_ARRANGE_OPTIONS.maxChordNotes)
-  const [rhythmGrid, setRhythmGrid] = useState<RhythmGrid>(DEFAULT_ARRANGE_OPTIONS.rhythmGrid)
-  const [density, setDensity] = useState<DensityMode>(DEFAULT_ARRANGE_OPTIONS.density)
   const [accompaniment, setAccompaniment] = useState<AccompanimentMode>(
     DEFAULT_ARRANGE_OPTIONS.accompaniment
   )
@@ -141,10 +123,6 @@ export function ArrangerMode() {
       sustainCapable,
       sustainThresholdMs,
       maxChordNotes,
-      rhythmGrid,
-      onsetMergeMs: DEFAULT_ARRANGE_OPTIONS.onsetMergeMs,
-      minRetriggerMs: DEFAULT_ARRANGE_OPTIONS.minRetriggerMs,
-      density,
       accompaniment,
       windowMode,
       melodyPlacement,
@@ -185,10 +163,10 @@ export function ArrangerMode() {
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="text-xl font-semibold text-slate-100">Sky Music Arranger</h1>
       <p className="mt-2 text-sm text-slate-400">
-        Where Convert Mode transcribes a MIDI note-for-note, the Arranger reshapes it to suit a
+        Where Convert Mode transcribes a MIDI note-for-note, the Arranger repositions it to suit a
         15-key diatonic instrument: it anchors the playable octave range on the melody, folds the
-        accompaniment around it, reduces chords to the notes that actually carry the harmony,
-        tightens rhythm and thins density. Always full chords.
+        accompaniment around it, and reduces chords to the notes that actually carry the harmony.
+        It never touches note timing or duration — only where each note lands on the grid.
       </p>
 
       <div className="mt-6">
@@ -305,25 +283,6 @@ export function ArrangerMode() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300">Rhythm snap</label>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Pulls onsets onto the beat and turns rolled chords into blocks. Turn off for
-              free-time or heavily rubato pieces.
-            </p>
-            <select
-              value={rhythmGrid}
-              onChange={(e) => setRhythmGrid(e.target.value as RhythmGrid)}
-              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-            >
-              {RHYTHM_GRIDS.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-slate-300">Accompaniment</label>
             <p className="mt-0.5 text-xs text-slate-500">
               Fifteen keys can't hold a full piano texture — a chord under every melody note just
@@ -341,33 +300,17 @@ export function ArrangerMode() {
                 </option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <span className="block text-sm font-medium text-slate-300">Density</span>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Caps how often the accompaniment re-strikes. Never affects the melody — drop to
-              Sparse if an arrangement still sounds cluttered.
-            </p>
-            <div className="mt-1 flex gap-4 text-sm text-slate-300">
-              {DENSITIES.map((d) => (
-                <label key={d.value} className="flex items-center gap-1.5">
-                  <input type="radio" checked={density === d.value} onChange={() => setDensity(d.value)} />
-                  {d.label}
-                </label>
-              ))}
-              <label className="flex items-center gap-1.5">
-                Max chord notes
-                <input
-                  type="number"
-                  min={1}
-                  max={6}
-                  value={maxChordNotes}
-                  onChange={(e) => setMaxChordNotes(Number(e.target.value))}
-                  className="w-14 rounded border border-slate-600 bg-slate-900 px-1.5 py-0.5 text-sm text-slate-100"
-                />
-              </label>
-            </div>
+            <label className="mt-2 flex items-center gap-1.5 text-sm text-slate-300">
+              Max chord notes
+              <input
+                type="number"
+                min={1}
+                max={6}
+                value={maxChordNotes}
+                onChange={(e) => setMaxChordNotes(Number(e.target.value))}
+                className="w-14 rounded border border-slate-600 bg-slate-900 px-1.5 py-0.5 text-sm text-slate-100"
+              />
+            </label>
           </div>
 
           <div>
@@ -466,12 +409,8 @@ export function ArrangerMode() {
             <li>Range shifts: {report.windowShifts}</li>
             <li>Doublings merged: {report.gridCollisionsMerged}</li>
             <li>Voicing-reduced: {report.voicingReduced}</li>
-            <li>Density-thinned: {report.densityThinned}</li>
+            <li>Accompaniment removed by mode: {report.densityThinned}</li>
             <li>Register-suppressed: {report.registerSuppressed}</li>
-            <li>Blocked by melody: {report.melodyProtected}</li>
-            <li>Onsets snapped: {report.onsetsSnapped}</li>
-            <li>Onsets merged: {report.onsetsMerged}</li>
-            <li>Retriggers removed: {report.retriggersRemoved}</li>
           </ul>
 
           <p className="text-xs text-slate-500">

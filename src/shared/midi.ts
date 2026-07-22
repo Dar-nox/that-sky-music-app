@@ -113,6 +113,8 @@ function capitalizeNote(name: string): string {
 }
 
 export function majorRootPcToKeyName(rootPc: number): string {
-  const table = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+  // Matches MAJOR_KEY_NAMES' own spelling choices, indexed by pitch class instead of circle of
+  // fifths, so every result round-trips back to a real dropdown option (see src/shared/midi.test.ts).
+  const table = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
   return table[((rootPc % 12) + 12) % 12]
 }

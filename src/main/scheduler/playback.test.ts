@@ -9,6 +9,7 @@ vi.mock('../keystroke/sender', () => ({
 }))
 
 import { PlaybackScheduler } from './playback'
+import { sendKeyUp } from '../keystroke/sender'
 
 function makeSong(): Song {
   return {
@@ -76,6 +77,21 @@ describe('PlaybackScheduler', () => {
     scheduler.play()
     vi.advanceTimersByTime(16)
     expect(scheduler.getStatus().elapsedMs).toBeGreaterThan(pausedElapsed)
+  })
+
+  it('pause releases any physically-held key instead of leaving it stuck down', () => {
+    const song = makeSong()
+    song.meta.durationMs = 9000
+    song.notes = [{ row: 'A', col: 1, timeMs: 0, durationMs: 5000, hold: true }]
+
+    const scheduler = new PlaybackScheduler()
+    scheduler.load(song, DEFAULT_NOTE_KEYS, 50, false)
+    scheduler.play()
+
+    vi.advanceTimersByTime(200)
+    scheduler.pause()
+
+    expect(sendKeyUp).toHaveBeenCalledWith(DEFAULT_NOTE_KEYS.A1)
   })
 
   it('stop resets the cursor so playback restarts from the beginning', () => {
