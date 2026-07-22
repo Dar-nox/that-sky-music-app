@@ -80,4 +80,32 @@ describe('quantizeNotes', () => {
   it('returns an empty array for no input notes', () => {
     expect(quantizeNotes([], 0, 'shift')).toEqual([])
   })
+
+  it('drops accidentals instead of snapping them, when dropAccidentals is on', () => {
+    const notes = [60, 61, 64].map((midi, i) => ({ midi, timeMs: i * 200 }))
+    const result = quantizeNotes(notes, 0, 'shift', true)
+
+    expect(result[0].dropped).toBe(false) // C4 — diatonic, untouched
+    expect(result[1].dropped).toBe(true) // C#4 — an accidental, dropped rather than snapped
+    expect(result[1].position).toBeNull()
+    expect(result[2].dropped).toBe(false) // E4 — diatonic, untouched
+  })
+
+  it('leaves accidentals snapped when dropAccidentals is off (the default)', () => {
+    const notes = [60, 61, 64].map((midi, i) => ({ midi, timeMs: i * 200 }))
+    const result = quantizeNotes(notes, 0, 'shift')
+
+    expect(result[1].dropped).toBe(false)
+    expect(result[1].altered).toBe(true)
+    expect(result[1].position).not.toBeNull()
+  })
+
+  it('drops accidentals independently of outOfRangeMode', () => {
+    // C#4 (an accidental) is also comfortably inside range — it must still be dropped, since
+    // dropAccidentals is about pitch, not register.
+    const notes = [60, 61].map((midi, i) => ({ midi, timeMs: i * 200 }))
+    const result = quantizeNotes(notes, 0, 'clamp', true)
+
+    expect(result[1].dropped).toBe(true)
+  })
 })

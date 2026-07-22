@@ -12,6 +12,7 @@ function baseOptions(overrides: Partial<ConvertOptions> = {}): ConvertOptions {
     chordMode: 'melody',
     maxChordNotes: 4,
     outOfRangeMode: 'shift',
+    dropAccidentals: false,
     sourceFileName: 'test.mid',
     title: 'Test Song',
     artist: 'Test Artist',
@@ -101,6 +102,20 @@ describe('convertMidiToSong', () => {
     const song = convertMidiToSong(parsed, baseOptions({ chordMode: 'chords', maxChordNotes: 2 }))
 
     expect(song.notes).toHaveLength(2)
+  })
+
+  it('drops accidentals from the output and the report when dropAccidentals is on', () => {
+    const parsed = baseParsed([
+      { midi: 60, timeMs: 0, durationMs: 200, velocity: 0.8 }, // C4 — diatonic
+      { midi: 61, timeMs: 200, durationMs: 200, velocity: 0.8 }, // C#4 — accidental
+      { midi: 64, timeMs: 400, durationMs: 200, velocity: 0.8 } // E4 — diatonic
+    ])
+
+    const song = convertMidiToSong(parsed, baseOptions({ dropAccidentals: true }))
+
+    expect(song.notes).toHaveLength(2)
+    expect(song.meta.conversionReport.notesDropped).toBe(1)
+    expect(song.meta.conversionReport.notesUnaltered).toBe(2)
   })
 
   it('marks a note as hold only when sustain-capable and longer than the threshold', () => {

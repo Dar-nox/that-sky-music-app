@@ -39,6 +39,12 @@ export interface ConvertOptions {
   chordMode: ChordMode
   maxChordNotes: number
   outOfRangeMode: OutOfRangeMode
+  /**
+   * Drop any note whose pitch isn't already on the diatonic scale (an accidental/black key),
+   * instead of snapping it to the nearest scale degree. Independent of `outOfRangeMode`, which
+   * only governs notes outside the 2-octave grid — this is about pitch, not register.
+   */
+  dropAccidentals: boolean
   sourceFileName: string
   title: string
   artist: string

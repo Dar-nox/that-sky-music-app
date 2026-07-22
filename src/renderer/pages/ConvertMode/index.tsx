@@ -35,6 +35,7 @@ export function ConvertMode() {
   const [chordMode, setChordMode] = useState<ChordMode>('melody')
   const [maxChordNotes, setMaxChordNotes] = useState(4)
   const [outOfRangeMode, setOutOfRangeMode] = useState<OutOfRangeMode>('shift')
+  const [dropAccidentals, setDropAccidentals] = useState(false)
 
   const [converting, setConverting] = useState(false)
   const [song, setSong] = useState<Song | null>(null)
@@ -98,6 +99,7 @@ export function ConvertMode() {
       chordMode,
       maxChordNotes,
       outOfRangeMode,
+      dropAccidentals,
       sourceFileName: fileName ?? 'unknown.mid',
       title: title || 'Untitled',
       artist
@@ -138,7 +140,7 @@ export function ConvertMode() {
       <p className="mt-2 text-sm text-slate-400">
         Import a MIDI file and convert it into a Sky note sheet. Notes are quantized to the
         nearest diatonic scale degree, then mapped to the 15-key grid — the melody stays
-        internally correct even if Sky auto-transposes the instrument in-game (CLAUDE.md §2).
+        internally correct even if Sky auto-transposes the instrument in-game.
       </p>
 
       <div className="mt-6">
@@ -282,6 +284,22 @@ export function ConvertMode() {
               <option value="clamp">Clamp to nearest edge note</option>
               <option value="drop">Drop the note</option>
             </select>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-1.5 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={dropAccidentals}
+                onChange={(e) => setDropAccidentals(e.target.checked)}
+              />
+              Drop accidentals
+            </label>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Removes notes that aren&apos;t already on the diatonic scale instead of snapping
+              them to the nearest scale degree. Independent of the range setting above — this is
+              about pitch, not register.
+            </p>
           </div>
 
           <button

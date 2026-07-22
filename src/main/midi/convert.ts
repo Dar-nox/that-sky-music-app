@@ -61,7 +61,7 @@ export function convertMidiToSong(parsed: ParsedMidiInternal, options: ConvertOp
   const rootPc = parseKeyToMajorRootPc(options.key)
 
   const quantizeInputs: QuantizeInput[] = densityFiltered.map((n) => ({ midi: n.midi, timeMs: n.timeMs }))
-  const quantized = quantizeNotes(quantizeInputs, rootPc, options.outOfRangeMode)
+  const quantized = quantizeNotes(quantizeInputs, rootPc, options.outOfRangeMode, options.dropAccidentals)
 
   const notes: SkyNote[] = []
   let notesUnaltered = 0

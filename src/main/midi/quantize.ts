@@ -87,8 +87,17 @@ export function degreeToGridPosition(relativeDegree: number): GridPosition {
  * shifted / dropped) — it doesn't separately track "chromatic snap only, no octave shift."
  * Any note that needed *either* a chromatic snap or an octave/clamp adjustment is counted
  * as octave-shifted; only an exact, already-in-range hit counts as unaltered.
+ *
+ * `dropAccidentals`, when true, removes any note whose raw pitch isn't already on the diatonic
+ * scale (an accidental/black key) before the range logic even runs — it's about pitch, not
+ * register, so it's independent of `outOfRangeMode` and a note can be dropped by either reason.
  */
-export function quantizeNotes(notes: QuantizeInput[], rootPc: number, outOfRangeMode: OutOfRangeMode): QuantizedNote[] {
+export function quantizeNotes(
+  notes: QuantizeInput[],
+  rootPc: number,
+  outOfRangeMode: OutOfRangeMode,
+  dropAccidentals = false
+): QuantizedNote[] {
   if (notes.length === 0) return []
 
   const degrees = notes.map((n) => nearestDiatonicDegree(n.midi, rootPc))
@@ -102,6 +111,10 @@ export function quantizeNotes(notes: QuantizeInput[], rootPc: number, outOfRange
 
   return notes.map((note, i) => {
     const { globalDegree, altered: chromaticAltered } = degrees[i]
+
+    if (dropAccidentals && chromaticAltered) {
+      return { ...note, position: null, altered: true, dropped: true }
+    }
 
     // Only 'shift' is allowed to relocate a note by octaves; the other modes get one chance
     // at the note's natural octave before falling through to their own behavior.
