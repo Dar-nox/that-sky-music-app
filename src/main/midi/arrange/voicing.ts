@@ -175,7 +175,13 @@ export function placeAndReduce(
   events: RoledChordEvent[],
   rootPc: RootPcInput,
   windowStartFor: (timeMs: number) => number,
-  maxChordNotes: number
+  maxChordNotes: number,
+  /**
+   * When false, the cap step takes the top-priority notes outright and never passes over a
+   * candidate for clashing — the `off` clash-handling mode. Defaults true so existing callers
+   * (and every test written before the setting existed) keep the original behavior.
+   */
+  avoidInChordClashes = true
 ): VoicingResult {
   let octaveFolds = 0
   let gridCollisionsMerged = 0
@@ -269,7 +275,9 @@ export function placeAndReduce(
     for (const candidate of ranked) {
       if (kept.length >= Math.max(1, maxChordNotes)) break
       const isProtected = candidate.role === 'melody' || candidate.role === 'bass'
-      const clashesWithKept = kept.some((k) => isDissonant(k.relativeDegree, candidate.relativeDegree))
+      const clashesWithKept =
+        avoidInChordClashes &&
+        kept.some((k) => isDissonant(k.relativeDegree, candidate.relativeDegree))
       if (!isProtected && clashesWithKept) {
         dissonancesAvoidedHere++
         continue

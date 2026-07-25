@@ -3,6 +3,7 @@ import {
   DEFAULT_ARRANGE_OPTIONS,
   type AccompanimentMode,
   type ArrangeOptions,
+  type ClashHandling,
   type MelodyPlacement,
   type WindowMode
 } from '@shared/arranger'
@@ -72,6 +73,7 @@ export function ArrangerMode() {
   const [melodyPlacement, setMelodyPlacement] = useState<MelodyPlacement>(
     DEFAULT_ARRANGE_OPTIONS.melodyPlacement
   )
+  const [clashHandling, setClashHandling] = useState<ClashHandling>(DEFAULT_ARRANGE_OPTIONS.clashHandling)
   const [keySegmentation, setKeySegmentation] = useState(DEFAULT_ARRANGE_OPTIONS.keySegmentation)
   const [responsiveWindowing, setResponsiveWindowing] = useState(
     DEFAULT_ARRANGE_OPTIONS.responsiveWindowing
@@ -147,6 +149,7 @@ export function ArrangerMode() {
       accompaniment,
       windowMode,
       melodyPlacement,
+      clashHandling,
       keySegmentation,
       responsiveWindowing,
       sourceFileName: fileName ?? 'unknown.mid',
@@ -347,6 +350,20 @@ export function ArrangerMode() {
                 />
               </label>
 
+              <Field
+                label="Clash handling"
+                hint="Two notes one scale step apart can't be softened on Sky's grid — there's no per-note volume or decay, so they read as a smear. This controls how far the arranger goes to avoid that. Turn it down if a song wants those notes."
+              >
+                <Select
+                  value={clashHandling}
+                  onChange={(e) => setClashHandling(e.target.value as ClashHandling)}
+                >
+                  <option value="full">Full — also drop notes that clash with one still ringing</option>
+                  <option value="chords">Chords only — never drop an overlapping note</option>
+                  <option value="off">Off — keep every note, clashes and all</option>
+                </Select>
+              </Field>
+
               <Field label="Octave range handling">
                 <Select value={windowMode} onChange={(e) => setWindowMode(e.target.value as WindowMode)}>
                   <option value="adaptive">Adaptive — follow the melody, shift only between phrases</option>
@@ -487,7 +504,26 @@ export function ArrangerMode() {
                 <StatTile label="Range shifts" value={report.windowShifts} />
                 <StatTile label="Doublings merged" value={report.gridCollisionsMerged} />
                 <StatTile label="Voicing-reduced" value={report.voicingReduced} />
-                <StatTile label="Dissonances avoided" value={report.dissonancesAvoided} />
+                {/* Arrangements saved before the clash-handling setting existed carry only the
+                    combined total, so fall back to one tile rather than showing two blanks. */}
+                {report.dissonancesAvoidedInChord === undefined ||
+                report.dissonancesAvoidedOverlap === undefined ? (
+                  <StatTile label="Dissonances avoided" value={report.dissonancesAvoided} />
+                ) : (
+                  <>
+                    <StatTile
+                      label="Clash — in chord"
+                      value={report.dissonancesAvoidedInChord}
+                      sub="resolved while capping"
+                    />
+                    <StatTile
+                      label="Clash — overlap"
+                      value={report.dissonancesAvoidedOverlap}
+                      tone={report.dissonancesAvoidedOverlap > 0 ? 'warn' : 'neutral'}
+                      sub="dropped while ringing"
+                    />
+                  </>
+                )}
                 <StatTile label="Accomp. removed by mode" value={report.densityThinned} />
                 <StatTile label="Register-suppressed" value={report.registerSuppressed} />
               </div>

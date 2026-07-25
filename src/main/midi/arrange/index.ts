@@ -121,11 +121,16 @@ function runArrangement(
     forcedBoundariesMs
   )
 
+  // `clashHandling` gates the two independent clash passes. Defaulting an absent value to 'full'
+  // keeps arrangements requested before the setting existed byte-identical.
+  const clashHandling = options.clashHandling ?? 'full'
+
   const { events: placed, octaveFolds, gridCollisionsMerged, voicingReduced, dissonancesAvoided } = placeAndReduce(
     roled,
     rootPcAt,
     (timeMs) => windowStartAt(windowPlan, timeMs),
-    options.maxChordNotes
+    options.maxChordNotes,
+    clashHandling !== 'off'
   )
 
   const { events: thinned, densityThinned, registerSuppressed } = selectAccompaniment(
@@ -133,10 +138,14 @@ function runArrangement(
     options.accompaniment
   )
 
-  const { events: deconflicted, dissonancesAvoided: overlapDissonancesAvoided } = avoidOverlapDissonance(
-    thinned,
-    (note) => resolveSoundingDuration(note, options.sustainCapable, options.sustainThresholdMs).durationMs
-  )
+  // The overlap pass is the only stage that removes a note purely for clashing, so it runs only
+  // in 'full'. Skipping it is a straight pass-through — no note is touched.
+  const { events: deconflicted, dissonancesAvoided: overlapDissonancesAvoided } =
+    clashHandling === 'full'
+      ? avoidOverlapDissonance(thinned, (note) =>
+          resolveSoundingDuration(note, options.sustainCapable, options.sustainThresholdMs).durationMs
+        )
+      : { events: thinned, dissonancesAvoided: 0 }
 
   // Emission runs in two passes so that accompaniment can never displace the tune: a chord note
   // and a melody note that land on the same cell at the same instant would otherwise collide
@@ -184,6 +193,8 @@ function runArrangement(
     gridCollisionsMerged,
     voicingReduced,
     dissonancesAvoided: totalDissonancesAvoided,
+    dissonancesAvoidedInChord: dissonancesAvoided,
+    dissonancesAvoidedOverlap: overlapDissonancesAvoided,
     densityThinned,
     registerSuppressed,
     octaveFolds,

@@ -8,9 +8,9 @@ function note(midi: number, timeMs = 0, durationMs = 200): ParsedMidiNote {
 }
 
 /** Places one chord in C major with the window anchored at degree 0 (C4 = degree 0). */
-function place(midis: number[], maxChordNotes = 4) {
+function place(midis: number[], maxChordNotes = 4, avoidInChordClashes = true) {
   const roled = assignVoiceRoles([{ timeMs: 0, notes: midis.map((m) => note(m)) }])
-  return placeAndReduce(roled, 0, () => 0, maxChordNotes)
+  return placeAndReduce(roled, 0, () => 0, maxChordNotes, avoidInChordClashes)
 }
 
 describe('placeAndReduce', () => {
@@ -43,6 +43,24 @@ describe('placeAndReduce', () => {
     expect(kept).toHaveLength(3)
     expect(kept.some((n) => n.role === 'melody')).toBe(true)
     expect(kept.some((n) => n.role === 'bass')).toBe(true)
+  })
+
+  it('fills the cap purely by priority when in-chord clash avoidance is off', () => {
+    // The same six adjacent scale degrees as the test above. With avoidance on, a clashing inner
+    // voice is passed over and only 3 notes survive; with it off the cap is the only limit, so
+    // the chord fills to all 4 and nothing is counted as a dissonance drop. This is the
+    // 'off' clash-handling mode's contract: never remove a note to avoid a clash.
+    const avoided = place([60, 62, 64, 65, 67, 69], 4)
+    const kept = place([60, 62, 64, 65, 67, 69], 4, false)
+
+    expect(avoided.events[0].notes).toHaveLength(3)
+    expect(avoided.dissonancesAvoided).toBeGreaterThanOrEqual(1)
+
+    expect(kept.events[0].notes).toHaveLength(4)
+    expect(kept.dissonancesAvoided).toBe(0)
+    // The two reasons a note can be cut are tracked separately, so turning avoidance off has to
+    // move those notes into the capacity bucket rather than losing count of them.
+    expect(kept.voicingReduced).toBeGreaterThan(avoided.voicingReduced)
   })
 
   it('caps a dense but fully consonant chord at maxChordNotes purely by capacity', () => {

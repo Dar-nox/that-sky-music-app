@@ -35,6 +35,27 @@ export type WindowMode = 'adaptive' | 'fixed'
  */
 export type MelodyPlacement = 'center' | 'high'
 
+/**
+ * How hard the arranger works to avoid the diatonic 2nd — the one interval this grid can't
+ * soften, since Sky has no per-note velocity or decay (see voicing.ts's `isDissonant`).
+ *
+ * This is a taste call, not a correctness one, which is why it's exposed: clash avoidance
+ * removes notes the source actually played, and for some material — close-voiced writing,
+ * deliberate tone clusters, anything where the "clash" *is* the sound — keeping them is the
+ * better answer. Ordered by how much they remove:
+ *
+ * - `full` — both passes. In addition to resolving clashes inside a chord, drops a note that
+ *   clashes with another note still ringing from an earlier event. This is the only mode that
+ *   removes notes purely for clashing, and it scales hard with sustain, since a longer sounding
+ *   window means more notes overlap. The original (and still default) behavior.
+ * - `chords` — in-chord only. Still prefers a consonant note when `maxChordNotes` forces a
+ *   choice, but never drops a note for overlapping something else. Usually costs few or no
+ *   notes relative to `off`, because the cap was going to discard something regardless.
+ * - `off` — no clash avoidance anywhere. Chords are capped purely by musical priority, and
+ *   overlapping notes are left alone. Every note the rest of the pipeline kept gets played.
+ */
+export type ClashHandling = 'full' | 'chords' | 'off'
+
 export interface ArrangeOptions {
   /** One or more track indices merged into a single note stream before arranging. */
   trackIndices: number[]
@@ -62,6 +83,8 @@ export interface ArrangeOptions {
   accompaniment: AccompanimentMode
   windowMode: WindowMode
   melodyPlacement: MelodyPlacement
+  /** How aggressively to remove clashing notes. Defaults to `full` — the original behavior. */
+  clashHandling: ClashHandling
   /**
    * Detects a sustained, confident key change partway through the song instead of forcing the
    * whole piece through one globally-chosen key (see dev-exports/findings.md's "Hopes and
@@ -93,9 +116,17 @@ export interface ArrangementReport {
   gridCollisionsMerged: number
   /** Notes dropped by the maxChordNotes voicing reduction. */
   voicingReduced: number
-  /** Notes dropped specifically to avoid a one-scale-step clash with another kept note, as
-   * opposed to voicingReduced's pure-capacity drops. */
+  /** Total notes dropped specifically to avoid a one-scale-step clash with another kept note, as
+   * opposed to voicingReduced's pure-capacity drops. The sum of the two fields below. */
   dissonancesAvoided: number
+  /** The `dissonancesAvoided` share from resolving a clash *inside* one chord event, while
+   * capping to maxChordNotes. Optional only because arrangements saved before the clash-handling
+   * setting existed don't carry the split. */
+  dissonancesAvoidedInChord?: number
+  /** The `dissonancesAvoided` share from dropping a note that clashed with another note still
+   * sounding from an earlier event. This is the aggressive half — it removes notes that nothing
+   * else would have removed. Always 0 unless `clashHandling` is `full`. */
+  dissonancesAvoidedOverlap?: number
   /** Accompaniment notes dropped by the accompaniment mode filter. */
   densityThinned: number
   /** Accompaniment notes dropped for sitting in (or above) the melody's register. */
@@ -118,6 +149,7 @@ export const DEFAULT_ARRANGE_OPTIONS: Pick<
   | 'accompaniment'
   | 'windowMode'
   | 'melodyPlacement'
+  | 'clashHandling'
   | 'autoKey'
   | 'autoMelodyTrack'
   | 'melodyTrackIndex'
@@ -131,6 +163,7 @@ export const DEFAULT_ARRANGE_OPTIONS: Pick<
   accompaniment: 'full',
   windowMode: 'adaptive',
   melodyPlacement: 'center',
+  clashHandling: 'full',
   keySegmentation: false,
   responsiveWindowing: false
 }

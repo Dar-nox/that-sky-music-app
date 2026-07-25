@@ -427,6 +427,89 @@ describe('cross-event dissonance avoidance', () => {
   })
 })
 
+describe('clashHandling', () => {
+  /** The fixture from the cross-event test above: a sustained melody note with an accompaniment
+   *  note a scale step away starting while it still rings. Only the overlap pass can catch it. */
+  function overlappingClash(): ParsedMidiInternal {
+    return {
+      bpm: 120,
+      durationMs: 2000,
+      detectedKey: 'C',
+      tracks: [
+        { index: 0, name: 'Melody', notes: [note(72, 0, 1000)] },
+        { index: 1, name: 'Accompaniment', notes: [note(71, 94, 100)] }
+      ]
+    }
+  }
+
+  function overlapOptions(clashHandling: ArrangeOptions['clashHandling']): ArrangeOptions {
+    return options({
+      trackIndices: [0, 1],
+      autoMelodyTrack: false,
+      melodyTrackIndex: 0,
+      sustainCapable: true,
+      sustainThresholdMs: 200,
+      clashHandling
+    })
+  }
+
+  it("'chords' keeps a note the overlap pass would have dropped", () => {
+    const song = arrangeMidiToSong(overlappingClash(), overlapOptions('chords'))
+
+    expect(song.notes).toHaveLength(2)
+    expect(song.meta.arrangement?.dissonancesAvoidedOverlap).toBe(0)
+  })
+
+  it("'off' keeps it too", () => {
+    const song = arrangeMidiToSong(overlappingClash(), overlapOptions('off'))
+
+    expect(song.notes).toHaveLength(2)
+    expect(song.meta.arrangement?.dissonancesAvoided).toBe(0)
+  })
+
+  it("'full' is the default and still drops it", () => {
+    const song = arrangeMidiToSong(overlappingClash(), overlapOptions('full'))
+
+    expect(song.notes).toHaveLength(1)
+    expect(song.meta.arrangement?.dissonancesAvoidedOverlap).toBeGreaterThanOrEqual(1)
+    expect(DEFAULT_ARRANGE_OPTIONS.clashHandling).toBe('full')
+  })
+
+  it("'off' never reports a clash drop anywhere in the pipeline", () => {
+    // The in-chord skip's own behavior is unit-tested in voicing.test.ts, where the chord's roles
+    // and window can be pinned exactly. What matters here is the end-to-end contract: 'off'
+    // must not remove a single note for clashing, at either stage.
+    const song = arrangeMidiToSong(
+      twoTrackPiano(),
+      options({ trackIndices: [0, 1], maxChordNotes: 3, clashHandling: 'off' })
+    )
+    const report = song.meta.arrangement!
+
+    expect(report.dissonancesAvoided).toBe(0)
+    expect(report.dissonancesAvoidedInChord).toBe(0)
+    expect(report.dissonancesAvoidedOverlap).toBe(0)
+  })
+
+  it('relaxing clash handling never yields fewer notes', () => {
+    const parsed = overlappingClash()
+    const counts = (['full', 'chords', 'off'] as const).map(
+      (mode) => arrangeMidiToSong(parsed, overlapOptions(mode)).notes.length
+    )
+
+    expect(counts[1]).toBeGreaterThanOrEqual(counts[0])
+    expect(counts[2]).toBeGreaterThanOrEqual(counts[1])
+  })
+
+  it('splits the report counter into in-chord and overlap shares that sum to the total', () => {
+    const song = arrangeMidiToSong(overlappingClash(), overlapOptions('full'))
+    const report = song.meta.arrangement!
+
+    expect(report.dissonancesAvoidedInChord! + report.dissonancesAvoidedOverlap!).toBe(
+      report.dissonancesAvoided
+    )
+  })
+})
+
 describe('arrangeMidiWithDiagnostics', () => {
   it('keySegmentPlan is null when keySegmentation is off', () => {
     const { diagnostics } = arrangeMidiWithDiagnostics(
