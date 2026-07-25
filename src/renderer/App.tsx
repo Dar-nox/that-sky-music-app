@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavTabs } from './components/NavTabs'
+import { AppShell } from './components/layout/AppShell'
 import { ConvertMode } from './pages/ConvertMode'
 import { ArrangerMode } from './pages/ArrangerMode'
 import { PlayMusicMode } from './pages/PlayMusicMode'
@@ -27,26 +27,9 @@ function App() {
   const Page = PAGES[page]
 
   return (
-    <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
-      <NavTabs />
-      <main className="flex-1 overflow-auto">
-        <Page />
-      </main>
-      <footer className="border-t border-slate-800 px-4 py-1 text-xs text-slate-500">
-        IPC:{' '}
-        <span
-          className={
-            ipcStatus === 'connected'
-              ? 'text-emerald-400'
-              : ipcStatus === 'failed'
-                ? 'text-red-400'
-                : 'text-slate-500'
-          }
-        >
-          {ipcStatus}
-        </span>
-      </footer>
-    </div>
+    <AppShell ipcStatus={ipcStatus}>
+      <Page />
+    </AppShell>
   )
 }
 

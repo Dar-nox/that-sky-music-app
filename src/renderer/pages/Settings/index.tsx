@@ -3,6 +3,9 @@ import type { GridCol, GridRow } from '@shared/song'
 import { DEFAULT_NOTE_KEYS, DEFAULT_TRANSPORT_HOTKEYS, type NoteKeyId, type TransportAction } from '@shared/keybinds'
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/settings'
 import { captureKeyName } from './keyCapture'
+import { PageContainer, PageHeader } from '../../components/layout/Page'
+import { Alert, Button, Card, Callout, Field, KeyCap, NumberInput, SectionHeading, TextInput } from '../../components/ui'
+import { IconFolder, IconFolderOpen, IconStar } from '../../components/icons'
 
 const GRID_ROWS: GridRow[] = ['A', 'B', 'C']
 const GRID_COLS: GridCol[] = [1, 2, 3, 4, 5]
@@ -148,192 +151,185 @@ export function Settings() {
 
   if (!loaded) {
     return (
-      <div className="p-6">
-        <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
-        <p className="mt-2 text-sm text-slate-400">Loading…</p>
-      </div>
+      <>
+        <PageHeader title="Settings" />
+        <PageContainer>
+          <Card>
+            <p className="text-sm text-moon-400">Loading…</p>
+          </Card>
+        </PageContainer>
+      </>
     )
   }
 
   return (
-    <div className="max-w-3xl space-y-8 p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Remap note keys and transport hotkeys. Changes save automatically.
-        </p>
-      </div>
+    <>
+      <PageHeader
+        title="Settings"
+        description="Remap note keys and transport hotkeys. Changes save automatically."
+      />
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {warning && <p className="text-sm text-amber-400">{warning}</p>}
+      <PageContainer>
+        {error && <Alert tone="error">{error}</Alert>}
+        {/* Single unsplit text node — Settings' test matches /already bound to cell A1/. */}
+        {warning && <Alert tone="warning">{warning}</Alert>}
+
+        {/* Note keys. This section must stay FIRST: the test resolves the
+            note-key reset via getAllByText('Reset to default')[0]. */}
+        <div className="grid gap-5 xl:grid-cols-[auto_1fr]">
+          <Card>
+            <SectionHeading
+              level={3}
+              eyebrow="The 15-key grid"
+              title="Note keys"
+              actions={
+                <Button size="sm" onClick={resetNoteKeys}>
+                  Reset to default
+                </Button>
+              }
+            />
+            <div className="paint-inset mt-4 inline-grid grid-cols-5 gap-2 rounded-card p-3">
+              {GRID_ROWS.flatMap((row) =>
+                GRID_COLS.map((col) => {
+                  const id = `${row}${col}` as NoteKeyId
+                  const isListening = listening?.kind === 'note' && listening.id === id
+                  return (
+                    <KeyCap
+                      key={id}
+                      id={id}
+                      value={settings.noteKeys[id]}
+                      listening={isListening}
+                      ariaLabel={`Note key ${id}`}
+                      onClick={() => startListeningNote(id)}
+                    />
+                  )
+                })
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionHeading
+              level={3}
+              eyebrow="Global"
+              title="Transport hotkeys"
+              actions={
+                <Button size="sm" onClick={resetHotkeys}>
+                  Reset to default
+                </Button>
+              }
+            />
+            <Callout className="mt-3" icon={<IconStar size={14} />}>
+              These work globally, even while the app window is minimized during playback.
+            </Callout>
+            <div className="mt-3 space-y-2">
+              {TRANSPORT_ACTIONS.map(({ id, label }) => {
+                const isListening = listening?.kind === 'hotkey' && listening.action === id
+                return (
+                  <div
+                    key={id}
+                    className="paint-inset flex items-center justify-between gap-3 rounded-tile px-3 py-2"
+                  >
+                    <span className="font-display text-sm font-semibold text-moon-200">{label}</span>
+                    <button
+                      onClick={() => startListeningHotkey(id)}
+                      className={`min-w-24 rounded-tile px-3 py-1.5 text-sm font-semibold transition-colors ${
+                        isListening
+                          ? 'animate-pulse bg-star-500 text-night-950 ring-2 ring-star-200'
+                          : 'bg-night-800/85 text-moon-200 shadow-cell ring-1 ring-cobalt-700/40 hover:bg-night-700/85'
+                      }`}
+                    >
+                      {isListening ? 'Press a key…' : settings.transportHotkeys[id]}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </div>
+
+        <Card>
+          <SectionHeading level={3} eyebrow="Timing" title="Playback tuning" />
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field
+              wrap
+              label="Sustain threshold (ms)"
+              hint="Notes held longer than this become sustained (held) presses during conversion, if the target instrument supports it."
+            >
+              <NumberInput
+                min={0}
+                value={settings.sustainThresholdMs}
+                onChange={(e) => void persist({ ...settings, sustainThresholdMs: Number(e.target.value) })}
+              />
+            </Field>
+
+            <Field
+              wrap
+              label="Minimum tap press duration (ms)"
+              hint="Floor applied to short tap keydown-to-keyup durations, so the OS/game doesn't miss them."
+            >
+              <NumberInput
+                min={0}
+                value={settings.minTapPressMs}
+                onChange={(e) => void persist({ ...settings, minTapPressMs: Number(e.target.value) })}
+              />
+            </Field>
+
+            <Field
+              wrap
+              label="Countdown duration (seconds)"
+              hint="How long the on-screen countdown runs before playback starts, giving you time to alt-tab into Sky."
+            >
+              <NumberInput
+                min={0}
+                value={settings.countdownSeconds}
+                onChange={(e) => void persist({ ...settings, countdownSeconds: Number(e.target.value) })}
+              />
+            </Field>
+
+            <Field
+              wrap
+              label="Target window title"
+              hint="The safety guard auto-pauses playback if the OS-focused window's title doesn't contain this text."
+            >
+              <TextInput
+                value={settings.targetWindowTitle}
+                onChange={(e) => void persist({ ...settings, targetWindowTitle: e.target.value })}
+              />
+            </Field>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHeading level={3} eyebrow="Library" title="Data folder" />
+          <p className="paint-inset mt-3 truncate rounded-tile px-3 py-2 font-mono text-xs text-moon-300">
+            {settings.dataFolder ?? 'Using the default location (app data folder / songs).'}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button icon={<IconFolder size={15} />} onClick={() => void handlePickFolder()}>
+              Choose folder…
+            </Button>
+            <Button icon={<IconFolderOpen size={15} />} onClick={() => void handleOpenFolder()}>
+              Open folder
+            </Button>
+          </div>
+        </Card>
+      </PageContainer>
+
+      {/* Floating capture prompt, so it stays visible wherever you scrolled to. */}
       {listening && (
-        <div className="rounded border border-sky-700 bg-sky-900/40 px-3 py-2 text-sm text-sky-200">
-          Press a key to bind it…{' '}
-          <button onClick={cancelListening} className="ml-2 underline hover:text-white">
-            Cancel
-          </button>
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-30 flex justify-center px-6">
+          <div className="paint-panel pointer-events-auto flex items-center gap-3 rounded-card px-4 py-2.5 backdrop-blur-md">
+            <span className="animate-halo-breathe text-star-400">
+              <IconStar size={18} />
+            </span>
+            <span className="text-sm text-moon-100">Press a key to bind it…</span>
+            <Button size="sm" variant="ghost" onClick={cancelListening}>
+              Cancel
+            </Button>
+          </div>
         </div>
       )}
-
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Note keys</h2>
-          <button
-            onClick={resetNoteKeys}
-            className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
-          >
-            Reset to default
-          </button>
-        </div>
-        <div className="inline-grid grid-cols-5 gap-1.5">
-          {GRID_ROWS.flatMap((row) =>
-            GRID_COLS.map((col) => {
-              const id = `${row}${col}` as NoteKeyId
-              const isListening = listening?.kind === 'note' && listening.id === id
-              return (
-                <button
-                  key={id}
-                  onClick={() => startListeningNote(id)}
-                  aria-label={`Note key ${id}`}
-                  className={`flex h-14 w-14 flex-col items-center justify-center rounded text-xs font-medium transition-colors ${
-                    isListening
-                      ? 'animate-pulse bg-sky-500 text-white ring-2 ring-sky-300'
-                      : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-                  }`}
-                >
-                  <span className="opacity-60">{id}</span>
-                  <span className="text-sm font-semibold">{isListening ? '…' : settings.noteKeys[id]}</span>
-                </button>
-              )
-            })
-          )}
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Transport hotkeys</h2>
-          <button
-            onClick={resetHotkeys}
-            className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
-          >
-            Reset to default
-          </button>
-        </div>
-        <p className="mb-2 text-xs text-slate-500">
-          These work globally, even while the app window is minimized during playback.
-        </p>
-        <div className="space-y-1.5">
-          {TRANSPORT_ACTIONS.map(({ id, label }) => {
-            const isListening = listening?.kind === 'hotkey' && listening.action === id
-            return (
-              <div
-                key={id}
-                className="flex items-center justify-between rounded border border-slate-800 px-3 py-2"
-              >
-                <span className="text-sm text-slate-300">{label}</span>
-                <button
-                  onClick={() => startListeningHotkey(id)}
-                  className={`min-w-24 rounded px-3 py-1 text-sm font-medium ${
-                    isListening
-                      ? 'animate-pulse bg-sky-500 text-white ring-2 ring-sky-300'
-                      : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-                  }`}
-                >
-                  {isListening ? 'Press a key…' : settings.transportHotkeys[id]}
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="block text-sm text-slate-300">
-            Sustain threshold (ms)
-            <input
-              type="number"
-              min={0}
-              value={settings.sustainThresholdMs}
-              onChange={(e) => void persist({ ...settings, sustainThresholdMs: Number(e.target.value) })}
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-100"
-            />
-          </label>
-          <p className="mt-1 text-xs text-slate-500">
-            Notes held longer than this become sustained (held) presses during conversion, if the target
-            instrument supports it.
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm text-slate-300">
-            Minimum tap press duration (ms)
-            <input
-              type="number"
-              min={0}
-              value={settings.minTapPressMs}
-              onChange={(e) => void persist({ ...settings, minTapPressMs: Number(e.target.value) })}
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-100"
-            />
-          </label>
-          <p className="mt-1 text-xs text-slate-500">
-            Floor applied to short tap keydown-to-keyup durations, so the OS/game doesn't miss them.
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm text-slate-300">
-            Countdown duration (seconds)
-            <input
-              type="number"
-              min={0}
-              value={settings.countdownSeconds}
-              onChange={(e) => void persist({ ...settings, countdownSeconds: Number(e.target.value) })}
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-100"
-            />
-          </label>
-          <p className="mt-1 text-xs text-slate-500">
-            How long the on-screen countdown runs before playback starts, giving you time to alt-tab into Sky.
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm text-slate-300">
-            Target window title
-            <input
-              type="text"
-              value={settings.targetWindowTitle}
-              onChange={(e) => void persist({ ...settings, targetWindowTitle: e.target.value })}
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-100"
-            />
-          </label>
-          <p className="mt-1 text-xs text-slate-500">
-            The safety guard auto-pauses playback if the OS-focused window's title doesn't contain this text.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Data folder</h2>
-        <p className="text-sm text-slate-300">
-          {settings.dataFolder ?? 'Using the default location (app data folder / songs).'}
-        </p>
-        <div className="mt-2 flex gap-2">
-          <button
-            onClick={() => void handlePickFolder()}
-            className="rounded bg-slate-700 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-600"
-          >
-            Choose folder…
-          </button>
-          <button
-            onClick={() => void handleOpenFolder()}
-            className="rounded bg-slate-700 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-600"
-          >
-            Open folder
-          </button>
-        </div>
-      </section>
-    </div>
+    </>
   )
 }

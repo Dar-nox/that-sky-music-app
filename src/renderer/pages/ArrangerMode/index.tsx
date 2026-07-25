@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import type { ChangeEvent } from 'react'
 import {
   DEFAULT_ARRANGE_OPTIONS,
   type AccompanimentMode,
@@ -10,6 +9,22 @@ import {
 import { MAJOR_KEY_NAMES, majorRootPcToKeyName, parseKeyToMajorRootPc, type ParsedMidi } from '@shared/midi'
 import type { Song } from '@shared/song'
 import { DEFAULT_SETTINGS } from '@shared/settings'
+import { MidiWorkbench, OptionGroup, TrackList } from '../../components/midi/MidiWorkbench'
+import {
+  Alert,
+  Badge,
+  Button,
+  Callout,
+  Checkbox,
+  Disclosure,
+  Field,
+  NumberInput,
+  SectionHeading,
+  Select,
+  StatTile,
+  TextInput
+} from '../../components/ui'
+import { IconSave, IconStar } from '../../components/icons'
 
 function normalizeToMajorKeyName(key: string): string {
   try {
@@ -78,8 +93,8 @@ export function ArrangerMode() {
       })
   }, [])
 
-  async function handleFileChange(event: ChangeEvent<HTMLInputElement>): Promise<void> {
-    const file = event.target.files?.[0]
+  async function handleFiles(files: File[]): Promise<void> {
+    const file = files[0]
     if (!file) return
 
     setError(null)
@@ -205,335 +220,307 @@ export function ArrangerMode() {
   const report = song?.meta.arrangement
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <h1 className="text-xl font-semibold text-slate-100">Sky Music Arranger</h1>
-      <p className="mt-2 text-sm text-slate-400">
-        Where Convert Mode transcribes a MIDI note-for-note, the Arranger repositions it to suit a
-        15-key diatonic instrument: it anchors the playable octave range on the melody, folds the
-        accompaniment around it, and reduces chords to the notes that actually carry the harmony.
-        It never touches note timing or duration — only where each note lands on the grid.
-      </p>
+    <MidiWorkbench
+      title="Sky Music Arranger"
+      intro="Where Convert Mode transcribes a MIDI note-for-note, the Arranger repositions it to suit a 15-key diatonic instrument: it anchors the playable octave range on the melody, folds the accompaniment around it, and reduces chords to the notes that actually carry the harmony. It never touches note timing or duration — only where each note lands on the grid."
+      fileName={fileName}
+      fileBadges={
+        parsed ? (
+          <>
+            <Badge>{parsed.tracks.length} tracks</Badge>
+            <Badge tone="gold">{autoKey ? 'Auto key' : `${key} Major`}</Badge>
+          </>
+        ) : undefined
+      }
+      onFiles={handleFiles}
+      error={error}
+      actionLabel="Arrange"
+      actionBusyLabel="Arranging…"
+      actionBusy={arranging}
+      actionDisabled={arranging || selectedTrackIndices.length === 0}
+      actionWarning={selectedTrackIndices.length === 0 ? 'Select at least one track.' : null}
+      onAction={() => void handleArrange()}
+      optionsSlot={
+        parsed && (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <OptionGroup label="Tracks & melody">
+              <Field label="Tracks to arrange">
+                <TrackList>
+                  {parsed.tracks.map((t) => (
+                    <Checkbox
+                      key={t.index}
+                      checked={selectedTrackIndices.includes(t.index)}
+                      onCheckedChange={() => toggleTrack(t.index)}
+                      label={
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="min-w-0 truncate">{t.name}</span>
+                          <Badge>{t.noteCount} notes</Badge>
+                        </span>
+                      }
+                    />
+                  ))}
+                </TrackList>
+              </Field>
 
-      <div className="mt-6">
-        <label className="block text-sm font-medium text-slate-300">MIDI file</label>
-        <input
-          type="file"
-          accept=".mid,.midi"
-          onChange={(e) => void handleFileChange(e)}
-          className="mt-1 block w-full text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-sky-500"
-        />
-      </div>
-
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-
-      {parsed && (
-        <div className="mt-6 space-y-4 rounded border border-slate-700 bg-slate-800/50 p-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300">Tracks to arrange</label>
-            <p className="mt-0.5 text-xs text-slate-500">
-              All tracks with notes are selected by default — the arranger is built to blend a
-              piano file's separate treble and bass tracks into one playable texture.
-            </p>
-            <div className="mt-1 space-y-1 rounded border border-slate-600 bg-slate-900 p-2">
-              {parsed.tracks.map((t) => (
-                <label key={t.index} className="flex items-center gap-1.5 text-sm text-slate-100">
-                  <input
-                    type="checkbox"
-                    checked={selectedTrackIndices.includes(t.index)}
-                    onChange={() => toggleTrack(t.index)}
-                  />
-                  {t.name} ({t.noteCount} notes)
-                </label>
-              ))}
-            </div>
-            {selectedTrackIndices.length === 0 && (
-              <p className="mt-1 text-xs text-red-400">Select at least one track.</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300">Melody track</label>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Which track carries the tune. Pinning it stops a momentarily higher accompaniment
-              note (a chord voicing, a grace note) from stealing the melody role mid-phrase.
-            </p>
-            <select
-              value={autoMelodyTrack ? 'auto' : melodyTrackIndex === null ? 'none' : String(melodyTrackIndex)}
-              onChange={(e) => {
-                const value = e.target.value
-                if (value === 'auto') {
-                  setAutoMelodyTrack(true)
-                  setMelodyTrackIndex(null)
-                } else if (value === 'none') {
-                  setAutoMelodyTrack(false)
-                  setMelodyTrackIndex(null)
-                } else {
-                  setAutoMelodyTrack(false)
-                  setMelodyTrackIndex(Number(value))
-                }
-              }}
-              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-            >
-              <option value="auto">Auto-detect (recommended)</option>
-              {parsed.tracks
-                .filter((t) => selectedTrackIndices.includes(t.index))
-                .map((t) => (
-                  <option key={t.index} value={t.index}>
-                    {t.name}
-                  </option>
-                ))}
-              <option value="none">No preference (pitch only)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="flex items-center gap-1.5 text-sm font-medium text-slate-300">
-              <input type="checkbox" checked={autoKey} onChange={(e) => setAutoKey(e.target.checked)} />
-              Detect key automatically
-            </label>
-            {!autoKey && (
-              <select
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
+              <Field
+                label="Melody track"
+                hint="Which track carries the tune. Pinning it stops a momentarily higher accompaniment note (a chord voicing, a grace note) from stealing the melody role mid-phrase."
               >
-                {MAJOR_KEY_NAMES.map((name) => (
-                  <option key={name} value={name}>
-                    {name} Major
-                  </option>
-                ))}
-              </select>
-            )}
-            <label className="mt-2 flex items-center gap-1.5 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={keySegmentation}
-                onChange={(e) => setKeySegmentation(e.target.checked)}
-              />
-              Detect key changes (experimental)
-            </label>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Looks for a sustained, confident modulation partway through the song instead of
-              forcing the whole piece through one key. Conservative by design — shouldn&apos;t
-              fire on a typical chromatic-but-stable song, only a genuine, lasting key change.
-            </p>
-          </div>
+                <Select
+                  value={autoMelodyTrack ? 'auto' : melodyTrackIndex === null ? 'none' : String(melodyTrackIndex)}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === 'auto') {
+                      setAutoMelodyTrack(true)
+                      setMelodyTrackIndex(null)
+                    } else if (value === 'none') {
+                      setAutoMelodyTrack(false)
+                      setMelodyTrackIndex(null)
+                    } else {
+                      setAutoMelodyTrack(false)
+                      setMelodyTrackIndex(Number(value))
+                    }
+                  }}
+                >
+                  <option value="auto">Auto-detect (recommended)</option>
+                  {parsed.tracks
+                    .filter((t) => selectedTrackIndices.includes(t.index))
+                    .map((t) => (
+                      <option key={t.index} value={t.index}>
+                        {t.name}
+                      </option>
+                    ))}
+                  <option value="none">No preference (pitch only)</option>
+                </Select>
+              </Field>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300">Title</label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300">Artist</label>
-              <input
-                type="text"
-                value={artist}
-                onChange={(e) => setArtist(e.target.value)}
-                className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-              />
-            </div>
-          </div>
+              <Field label="Key">
+                <div className="space-y-2">
+                  <Checkbox checked={autoKey} onCheckedChange={setAutoKey} label="Detect key automatically" />
+                  {!autoKey && (
+                    <Select value={key} onChange={(e) => setKey(e.target.value)}>
+                      {MAJOR_KEY_NAMES.map((name) => (
+                        <option key={name} value={name}>
+                          {name} Major
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </div>
+              </Field>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-300">Accompaniment</label>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Fifteen keys can't hold a full piano texture — a chord under every melody note just
-              competes with the tune for the same keys. The melody always plays in full; this
-              controls how much goes underneath it.
-            </p>
-            <select
-              value={accompaniment}
-              onChange={(e) => setAccompaniment(e.target.value as AccompanimentMode)}
-              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-            >
-              {ACCOMPANIMENTS.map((a) => (
-                <option key={a.value} value={a.value}>
-                  {a.label} — {a.hint}
-                </option>
-              ))}
-            </select>
-            <label className="mt-2 flex items-center gap-1.5 text-sm text-slate-300">
-              Max chord notes
-              <input
-                type="number"
-                min={1}
-                max={6}
-                value={maxChordNotes}
-                onChange={(e) => setMaxChordNotes(Number(e.target.value))}
-                className="w-14 rounded border border-slate-600 bg-slate-900 px-1.5 py-0.5 text-sm text-slate-100"
-              />
-            </label>
-          </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Title">
+                  <TextInput value={title} onChange={(e) => setTitle(e.target.value)} />
+                </Field>
+                <Field label="Artist">
+                  <TextInput value={artist} onChange={(e) => setArtist(e.target.value)} />
+                </Field>
+              </div>
+            </OptionGroup>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-300">Octave range handling</label>
-            <select
-              value={windowMode}
-              onChange={(e) => setWindowMode(e.target.value as WindowMode)}
-              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-            >
-              <option value="adaptive">Adaptive — follow the melody, shift only between phrases</option>
-              <option value="fixed">Fixed — one range for the whole song</option>
-            </select>
-            {windowMode === 'adaptive' && (
-              <>
-                <label className="mt-2 flex items-center gap-1.5 text-sm text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={responsiveWindowing}
-                    onChange={(e) => setResponsiveWindowing(e.target.checked)}
-                  />
-                  Responsive octave re-anchoring (experimental)
-                </label>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Unproven — allows the range to also shift mid-phrase, not just between phrases,
-                  for a melody that drifts far without ever pausing. This trades heavy note
-                  folding for a possible audible register jump mid-line; A/B it by ear rather than
-                  trusting the report numbers.
-                </p>
-              </>
-            )}
-          </div>
+            <OptionGroup label="Harmony & range">
+              <Field
+                label="Accompaniment"
+                hint="Fifteen keys can't hold a full piano texture — a chord under every melody note just competes with the tune for the same keys. The melody always plays in full; this controls how much goes underneath it."
+              >
+                <Select
+                  value={accompaniment}
+                  onChange={(e) => setAccompaniment(e.target.value as AccompanimentMode)}
+                >
+                  {ACCOMPANIMENTS.map((a) => (
+                    <option key={a.value} value={a.value}>
+                      {a.label} — {a.hint}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-300">Melody placement</label>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Sky has no per-note volume — pitch is the only thing that reads as louder. &quot;High&quot;
-              seats the melody near the top of its range so it sits above the accompaniment in the
-              mix, instead of centered where it competes with it.
-            </p>
-            <select
-              value={melodyPlacement}
-              onChange={(e) => setMelodyPlacement(e.target.value as MelodyPlacement)}
-              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-            >
-              <option value="center">Center — original behavior</option>
-              <option value="high">High — melody sits near the top of the range</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="flex items-center gap-1.5 text-sm text-slate-300">
-              <input type="checkbox" checked={sustainCapable} onChange={(e) => setSustainCapable(e.target.checked)} />
-              Target instrument supports sustain (Triumph Violin, Cello, Harmonica, Electric
-              Guitar, Voice of AURORA, Triumph Saxophone)
-            </label>
-            {sustainCapable && (
-              <label className="mt-2 flex items-center gap-1.5 text-sm text-slate-300">
-                Sustain threshold (ms)
-                <input
-                  type="number"
-                  min={0}
-                  value={sustainThresholdMs}
-                  onChange={(e) => setSustainThresholdMs(Number(e.target.value))}
-                  className="w-20 rounded border border-slate-600 bg-slate-900 px-1.5 py-0.5 text-sm text-slate-100"
+              <label className="flex items-center gap-2 text-sm text-moon-200">
+                Max chord notes
+                <NumberInput
+                  width="xs"
+                  min={1}
+                  max={6}
+                  value={maxChordNotes}
+                  onChange={(e) => setMaxChordNotes(Number(e.target.value))}
                 />
               </label>
-            )}
+
+              <Field label="Octave range handling">
+                <Select value={windowMode} onChange={(e) => setWindowMode(e.target.value as WindowMode)}>
+                  <option value="adaptive">Adaptive — follow the melody, shift only between phrases</option>
+                  <option value="fixed">Fixed — one range for the whole song</option>
+                </Select>
+              </Field>
+
+              <Field
+                label="Melody placement"
+                hint={
+                  'Sky has no per-note volume — pitch is the only thing that reads as louder. "High" seats the melody near the top of its range so it sits above the accompaniment in the mix, instead of centered where it competes with it.'
+                }
+              >
+                <Select
+                  value={melodyPlacement}
+                  onChange={(e) => setMelodyPlacement(e.target.value as MelodyPlacement)}
+                >
+                  <option value="center">Center — original behavior</option>
+                  <option value="high">High — melody sits near the top of the range</option>
+                </Select>
+              </Field>
+
+              <Checkbox
+                checked={sustainCapable}
+                onCheckedChange={setSustainCapable}
+                label="Target instrument supports sustain"
+                hint="Triumph Violin, Cello, Harmonica, Electric Guitar, Voice of AURORA, Triumph Saxophone."
+              />
+              {sustainCapable && (
+                <label className="flex items-center gap-2 text-sm text-moon-200">
+                  Sustain threshold (ms)
+                  <NumberInput
+                    width="xs"
+                    min={0}
+                    value={sustainThresholdMs}
+                    onChange={(e) => setSustainThresholdMs(Number(e.target.value))}
+                  />
+                </label>
+              )}
+
+              {/* Native <details>, so these stay mounted when collapsed and the
+                  conditional guards below behave exactly as before. */}
+              <Disclosure
+                summary="Experimental"
+                defaultOpen={keySegmentation || (windowMode === 'adaptive' && responsiveWindowing)}
+              >
+                <Checkbox
+                  checked={keySegmentation}
+                  onCheckedChange={setKeySegmentation}
+                  label="Detect key changes (experimental)"
+                  hint="Looks for a sustained, confident modulation partway through the song instead of forcing the whole piece through one key. Conservative by design — shouldn’t fire on a typical chromatic-but-stable song, only a genuine, lasting key change."
+                />
+                {windowMode === 'adaptive' && (
+                  <Checkbox
+                    checked={responsiveWindowing}
+                    onCheckedChange={setResponsiveWindowing}
+                    label="Responsive octave re-anchoring (experimental)"
+                    hint="Unproven — allows the range to also shift mid-phrase, not just between phrases, for a melody that drifts far without ever pausing. This trades heavy note folding for a possible audible register jump mid-line; A/B it by ear rather than trusting the report numbers."
+                  />
+                )}
+              </Disclosure>
+            </OptionGroup>
           </div>
+        )
+      }
+      reportSlot={
+        song && report ? (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              <div>
+                <div className="text-[10px] font-bold tracking-[0.1em] text-moon-500 uppercase">
+                  Melody track
+                </div>
+                <div className="font-display text-lg font-semibold text-moon-50">
+                  {report.melodyTrackIndex === null
+                    ? 'None (pitch only)'
+                    : (parsed?.tracks.find((t) => t.index === report.melodyTrackIndex)?.name ??
+                      `Track ${report.melodyTrackIndex + 1}`)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold tracking-[0.1em] text-moon-500 uppercase">Key</div>
+                <div className="flex items-center gap-2">
+                  <span className="font-display text-lg font-semibold text-moon-50">
+                    {report.key} Major
+                  </span>
+                  <Badge tone={report.keyFitPercent < 80 ? 'warn' : 'good'}>
+                    {report.keyFitPercent}% fit
+                  </Badge>
+                </div>
+              </div>
+            </div>
 
-          <button
-            onClick={() => void handleArrange()}
-            disabled={arranging || selectedTrackIndices.length === 0}
-            className="rounded bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-          >
-            {arranging ? 'Arranging…' : 'Arrange'}
-          </button>
-        </div>
-      )}
-
-      {song && report && (
-        <div className="mt-6 space-y-3 rounded border border-slate-700 bg-slate-800/50 p-4">
-          <h2 className="text-sm font-semibold text-slate-200">Arrangement report</h2>
-
-          <div className="text-sm text-slate-300">
-            Melody track:{' '}
-            <span className="font-medium">
-              {report.melodyTrackIndex === null
-                ? 'None (pitch only)'
-                : (parsed?.tracks.find((t) => t.index === report.melodyTrackIndex)?.name ??
-                  `Track ${report.melodyTrackIndex + 1}`)}
-            </span>
-          </div>
-
-          <div className="text-sm text-slate-300">
-            Key: <span className="font-medium">{report.key} Major</span>{' '}
-            <span className={report.keyFitPercent < 80 ? 'text-amber-400' : 'text-slate-400'}>
-              ({report.keyFitPercent}% fit)
-            </span>
             {report.keyFitPercent < 80 && (
-              <p className="mt-1 text-xs text-amber-400">
+              <Alert tone="warning">
                 A lot of this song sits outside a single major scale, so many notes had to be
                 snapped. Try picking the key manually if it sounds wrong.
+              </Alert>
+            )}
+
+            {report.keySegments && report.keySegments.length > 1 && (
+              <div>
+                <SectionHeading level={3} title="Detected key changes" />
+                <ul className="mt-2 space-y-1.5">
+                  {report.keySegments.map((segment, i) => (
+                    <li
+                      key={i}
+                      className="paint-inset flex flex-wrap items-center gap-2 rounded-tile px-3 py-1.5 text-xs"
+                    >
+                      <span className="font-mono text-moon-400">
+                        {formatMmSs(segment.startMs)}–{formatMmSs(segment.endMs)}
+                      </span>
+                      <span className="font-semibold text-moon-100">{segment.key} Major</span>
+                      <Badge tone={segment.keyFitPercent < 80 ? 'warn' : 'neutral'}>
+                        {segment.keyFitPercent}% fit
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div>
+              <SectionHeading level={3} title="Volume" />
+              <div className="mt-2 grid grid-cols-2 gap-2.5 md:grid-cols-3">
+                <StatTile label="Notes in" value={report.notesIn} />
+                <StatTile label="Notes out" value={report.notesOut} />
+                <StatTile label="Chord events" value={report.chordEventsTotal} />
+                <StatTile label="Avg notes/chord" value={report.avgNotesPerChord} />
+                <StatTile label="Peak notes/sec" value={report.peakNotesPerSecond} />
+              </div>
+            </div>
+
+            <div>
+              <SectionHeading level={3} title="Adjustments" />
+              <div className="mt-2 grid grid-cols-2 gap-2.5 md:grid-cols-3">
+                <StatTile label="Octave folds" value={report.octaveFolds} />
+                <StatTile label="Range shifts" value={report.windowShifts} />
+                <StatTile label="Doublings merged" value={report.gridCollisionsMerged} />
+                <StatTile label="Voicing-reduced" value={report.voicingReduced} />
+                <StatTile label="Dissonances avoided" value={report.dissonancesAvoided} />
+                <StatTile label="Accomp. removed by mode" value={report.densityThinned} />
+                <StatTile label="Register-suppressed" value={report.registerSuppressed} />
+              </div>
+            </div>
+
+            <Callout icon={<IconStar size={14} />}>
+              Tip: load this in Play Music Mode with dry-run enabled to preview the note stream
+              before sending real keystrokes to the game.
+            </Callout>
+
+            <div className="flex flex-wrap gap-2 border-t border-cobalt-700/25 pt-4">
+              <Button
+                variant="success"
+                icon={<IconSave size={15} />}
+                loading={saving}
+                onClick={() => void handleSave()}
+              >
+                {saving ? 'Saving…' : 'Save to library'}
+              </Button>
+              <Button loading={exportingDev} onClick={() => void handleDevExport()}>
+                {exportingDev ? 'Exporting…' : 'Export raw + arranged (dev)'}
+              </Button>
+            </div>
+
+            {savedPath && <Alert tone="success">Saved to {savedPath}</Alert>}
+            {devExportPaths && (
+              <p className="font-mono text-[11px] break-all text-moon-500">
+                Exported {devExportPaths.raw} and {devExportPaths.arranged}
               </p>
             )}
           </div>
-
-          {report.keySegments && report.keySegments.length > 1 && (
-            <div className="text-sm text-slate-300">
-              <span className="font-medium">Detected key changes:</span>
-              <ul className="mt-1 space-y-0.5 text-xs text-slate-400">
-                {report.keySegments.map((segment, i) => (
-                  <li key={i}>
-                    {formatMmSs(segment.startMs)}–{formatMmSs(segment.endMs)}: {segment.key} Major (
-                    {segment.keyFitPercent}% fit)
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-slate-300">
-            <li>Notes in: {report.notesIn}</li>
-            <li>Notes out: {report.notesOut}</li>
-            <li>Chord events: {report.chordEventsTotal}</li>
-            <li>Avg notes/chord: {report.avgNotesPerChord}</li>
-            <li>Peak notes/sec: {report.peakNotesPerSecond}</li>
-            <li>Octave folds: {report.octaveFolds}</li>
-            <li>Range shifts: {report.windowShifts}</li>
-            <li>Doublings merged: {report.gridCollisionsMerged}</li>
-            <li>Voicing-reduced: {report.voicingReduced}</li>
-            <li>Dissonances avoided: {report.dissonancesAvoided}</li>
-            <li>Accompaniment removed by mode: {report.densityThinned}</li>
-            <li>Register-suppressed: {report.registerSuppressed}</li>
-          </ul>
-
-          <p className="text-xs text-slate-500">
-            Tip: load this in Play Music Mode with dry-run enabled to preview the note stream
-            before sending real keystrokes to the game.
-          </p>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => void handleSave()}
-              disabled={saving}
-              className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save to library'}
-            </button>
-            <button
-              onClick={() => void handleDevExport()}
-              disabled={exportingDev}
-              className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-600 disabled:opacity-50"
-            >
-              {exportingDev ? 'Exporting…' : 'Export raw + arranged (dev)'}
-            </button>
-          </div>
-
-          {savedPath && <p className="text-sm text-emerald-400">Saved to {savedPath}</p>}
-          {devExportPaths && (
-            <p className="text-xs text-slate-500">
-              Exported {devExportPaths.raw} and {devExportPaths.arranged}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+        ) : undefined
+      }
+    />
   )
 }

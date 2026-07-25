@@ -1,1 +1,269 @@
 @import 'tailwindcss';
+
+/* ============================================================================
+   Starry Night theme tokens.
+   Every colour is named after a pigment in the painting rather than a UI role,
+   so the palette stays coherent; components pick a pigment to express a role
+   (danger -> vermilion, success -> cypress).
+   Tailwind v4 is CSS-first — there is no tailwind.config.*, this block is the
+   whole theme.
+   ========================================================================= */
+@theme {
+  /* Night sky — page background and surfaces */
+  --color-night-950: #060a1b;
+  --color-night-900: #0b1230;
+  --color-night-850: #0f1739;
+  --color-night-800: #141e47;
+  --color-night-700: #1c2a61;
+  --color-night-600: #26377c;
+  --color-night-500: #334898;
+
+  /* Cobalt — the swirls, primary accent */
+  --color-cobalt-800: #12275f;
+  --color-cobalt-700: #1b3a8c;
+  --color-cobalt-600: #2a5cb8;
+  --color-cobalt-500: #3d77d6;
+  --color-cobalt-400: #6098e6;
+  --color-cobalt-300: #8fb8e8;
+  --color-cobalt-200: #bbd5f4;
+
+  /* Star gold / wheat — secondary accent, highlights, "on" states */
+  --color-star-700: #9c6a17;
+  --color-star-600: #c98a22;
+  --color-star-500: #e8b23a;
+  --color-star-400: #f4c95d;
+  --color-star-300: #fadd92;
+  --color-star-200: #ffefc2;
+
+  /* Moon cream — type */
+  --color-moon-50: #fffcf2;
+  --color-moon-100: #fdf4d8;
+  --color-moon-200: #efe3c4;
+  --color-moon-300: #cfc3a6;
+  --color-moon-400: #a79e86;
+  --color-moon-500: #7c7663;
+
+  /* Cypress green-black — success, calm panels */
+  --color-cypress-900: #0e1d16;
+  --color-cypress-800: #14261e;
+  --color-cypress-700: #1e3a2b;
+  --color-cypress-600: #2f5a41;
+  --color-cypress-500: #4c8760;
+  --color-cypress-400: #7fb069;
+
+  /* Village ochre — warning */
+  --color-ochre-600: #a86b23;
+  --color-ochre-500: #c9873a;
+  --color-ochre-400: #e0a458;
+  --color-ochre-300: #f0c48a;
+
+  /* Vermilion — danger, panic */
+  --color-vermilion-700: #7f2b25;
+  --color-vermilion-600: #a93b33;
+  --color-vermilion-500: #d9544d;
+  --color-vermilion-400: #ee8078;
+
+  /* Type. --font-mono is deliberately left at the Tailwind default (note log). */
+  --font-display: 'Fraunces Variable', ui-serif, Georgia, serif;
+  --font-sans: 'Nunito Variable', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+
+  /* Radii */
+  --radius-tile: 0.875rem;
+  --radius-card: 1.25rem;
+  --radius-pill: 9999px;
+
+  /* Shadows */
+  --shadow-halo: 0 0 0 1px rgb(61 119 214 / 0.18), 0 18px 40px -18px rgb(6 10 27 / 0.9);
+  --shadow-canvas: inset 0 1px 0 0 rgb(255 252 242 / 0.06);
+  --shadow-star: 0 0 18px 2px rgb(244 201 93 / 0.45), 0 0 44px 10px rgb(244 201 93 / 0.16);
+  --shadow-cell: inset 0 -2px 6px rgb(6 10 27 / 0.55);
+
+  /* Motion */
+  --ease-brush: cubic-bezier(0.42, 0, 0.24, 1);
+  --animate-drift: drift 64s var(--ease-brush) infinite alternate;
+  --animate-drift-slow: drift-slow 96s var(--ease-brush) infinite alternate;
+  --animate-swirl: swirl 240s linear infinite;
+  --animate-twinkle: twinkle 5.5s var(--ease-brush) infinite;
+  --animate-star-pop: star-pop 180ms var(--ease-brush) both;
+  --animate-halo-breathe: halo-breathe 3.2s var(--ease-brush) infinite;
+
+  @keyframes drift {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      transform: translate3d(-2.2%, 1.4%, 0) scale(1.035);
+    }
+  }
+  @keyframes drift-slow {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(1.8%, -1.2%, 0);
+    }
+  }
+  @keyframes swirl {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes twinkle {
+    0%,
+    100% {
+      opacity: 0.32;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  /* A struck note blooms OUTWARD and settles. It must never start below
+     scale(1) — notes are often ~150ms taps, so a cell that animates in from
+     small reads as a flicker/ring rather than a hit. */
+  @keyframes star-pop {
+    from {
+      transform: scale(1.26);
+    }
+    to {
+      transform: scale(1.1);
+    }
+  }
+  @keyframes halo-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scale(1.18);
+      opacity: 0.15;
+    }
+  }
+}
+
+/* ============================================================================
+   Custom utilities — the painterly surface treatments. These replace the old
+   `rounded border border-slate-700 bg-slate-800/50` recipe that was retyped
+   across every page.
+   ========================================================================= */
+
+/* The standard raised panel: a canvas-toned wash with a lit top edge. */
+@utility paint-panel {
+  background-image: linear-gradient(158deg, rgb(20 30 71 / 0.82), rgb(11 18 48 / 0.88));
+  border: 1px solid rgb(61 119 214 / 0.22);
+  box-shadow: var(--shadow-halo), var(--shadow-canvas);
+}
+
+/* Recessed surfaces: note log, track lists, path chips, keycap boards. */
+@utility paint-inset {
+  background-color: rgb(6 10 27 / 0.66);
+  border: 1px solid rgb(61 119 214 / 0.14);
+  box-shadow: inset 0 2px 8px rgb(0 0 0 / 0.35);
+}
+
+/* The gold "wet paint" stroke marking an active nav item or selected song. */
+@utility brush-edge {
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset-block: 0.35rem;
+    inset-inline-start: 0;
+    width: 3px;
+    border-radius: var(--radius-pill);
+    background-image: linear-gradient(
+      to bottom,
+      transparent,
+      var(--color-star-400) 18%,
+      var(--color-star-200) 50%,
+      var(--color-star-400) 82%,
+      transparent
+    );
+  }
+}
+
+@utility scrollbar-night {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-cobalt-700) transparent;
+
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  &::-webkit-scrollbar-thumb {
+    border-radius: var(--radius-pill);
+    background-color: rgb(27 58 140 / 0.75);
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* ============================================================================
+   Base layer
+   ========================================================================= */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-night-950);
+    color: var(--color-moon-100);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    /* SOFT/WONK are what make Fraunces read as hand-lettered rather than drafted.
+       Requires the `full` axis bundle imported in main.tsx. */
+    font-variation-settings:
+      'SOFT' 60,
+      'WONK' 1,
+      'opsz' 36;
+    letter-spacing: -0.012em;
+  }
+
+  ::selection {
+    background-color: var(--color-star-500);
+    color: var(--color-night-950);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-star-400);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* The native controls we deliberately keep (checkbox/radio/range) get themed
+     for free rather than being rebuilt — rebuilding them would risk behaviour. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: var(--color-star-500);
+  }
+  input[type='range'] {
+    accent-color: var(--color-star-400);
+  }
+}
+
+/* ============================================================================
+   Reduced motion — the background is a painting, so freezing it costs nothing.
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import type { ChangeEvent } from 'react'
 import {
   MAJOR_KEY_NAMES,
   majorRootPcToKeyName,
@@ -11,6 +10,21 @@ import {
 } from '@shared/midi'
 import type { Song } from '@shared/song'
 import { DEFAULT_SETTINGS } from '@shared/settings'
+import { MidiWorkbench, OptionGroup, TrackList } from '../../components/midi/MidiWorkbench'
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  Field,
+  NumberInput,
+  RadioGroup,
+  SegmentedProgress,
+  Select,
+  StatTile,
+  TextInput
+} from '../../components/ui'
+import { IconSave } from '../../components/icons'
 
 function normalizeToMajorKeyName(key: string): string {
   try {
@@ -53,8 +67,8 @@ export function ConvertMode() {
       })
   }, [])
 
-  async function handleFileChange(event: ChangeEvent<HTMLInputElement>): Promise<void> {
-    const file = event.target.files?.[0]
+  async function handleFiles(files: File[]): Promise<void> {
+    const file = files[0]
     if (!file) return
 
     setError(null)
@@ -162,224 +176,200 @@ export function ConvertMode() {
   const pct = (n: number): string => (report && report.notesTotal > 0 ? `${Math.round((n / report.notesTotal) * 100)}%` : '0%')
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <h1 className="text-xl font-semibold text-slate-100">Convert Mode</h1>
-      <p className="mt-2 text-sm text-slate-400">
-        Import a MIDI file and convert it into a Sky note sheet. Notes are quantized to the
-        nearest diatonic scale degree, then mapped to the 15-key grid — the melody stays
-        internally correct even if Sky auto-transposes the instrument in-game.
-      </p>
+    <MidiWorkbench
+      title="Convert Mode"
+      intro="Import a MIDI file and convert it into a Sky note sheet. Notes are quantized to the nearest diatonic scale degree, then mapped to the 15-key grid — the melody stays internally correct even if Sky auto-transposes the instrument in-game."
+      fileName={fileName}
+      fileBadges={
+        parsed ? (
+          <>
+            <Badge>{parsed.tracks.length} tracks</Badge>
+            <Badge tone="gold">{key} Major</Badge>
+          </>
+        ) : undefined
+      }
+      onFiles={handleFiles}
+      error={error}
+      actionLabel="Convert"
+      actionBusyLabel="Converting…"
+      actionBusy={converting}
+      actionDisabled={converting || selectedTrackIndices.length === 0}
+      actionWarning={selectedTrackIndices.length === 0 ? 'Select at least one track.' : null}
+      onAction={() => void handleConvert()}
+      optionsSlot={
+        parsed && (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <OptionGroup label="Notes">
+              <Field
+                label="Tracks to convert"
+                hint={
+                  'Select more than one to combine them (e.g. a piano file\u2019s separate treble/bass-clef tracks) into a single note stream — pair with "Full chords" for the best result.'
+                }
+              >
+                <TrackList>
+                  {parsed.tracks.map((t) => (
+                    <Checkbox
+                      key={t.index}
+                      checked={selectedTrackIndices.includes(t.index)}
+                      onCheckedChange={() => toggleTrack(t.index)}
+                      label={
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="min-w-0 truncate">{t.name}</span>
+                          <Badge>{t.noteCount} notes</Badge>
+                          {t.index === parsed.suggestedTrackIndex && <Badge tone="gold">suggested</Badge>}
+                        </span>
+                      }
+                    />
+                  ))}
+                </TrackList>
+              </Field>
 
-      <div className="mt-6">
-        <label className="block text-sm font-medium text-slate-300">MIDI file</label>
-        <input
-          type="file"
-          accept=".mid,.midi"
-          onChange={(e) => void handleFileChange(e)}
-          className="mt-1 block w-full text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-sky-500"
-        />
-      </div>
+              <Field label={`Key ${parsed.detectedKey ? '(from file, editable)' : '(estimated, editable)'}`}>
+                <Select value={key} onChange={(e) => setKey(e.target.value)}>
+                  {MAJOR_KEY_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                      {name} Major
+                    </option>
+                  ))}
+                </Select>
+              </Field>
 
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+              <Field label="Notes outside the 2-octave grid">
+                <Select
+                  value={outOfRangeMode}
+                  onChange={(e) => setOutOfRangeMode(e.target.value as OutOfRangeMode)}
+                >
+                  <option value="shift">Shift by octaves to fit</option>
+                  <option value="clamp">Clamp to nearest edge note</option>
+                  <option value="drop">Drop the note</option>
+                </Select>
+              </Field>
 
-      {parsed && (
-        <div className="mt-6 space-y-4 rounded border border-slate-700 bg-slate-800/50 p-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300">Tracks to convert</label>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Select more than one to combine them (e.g. a piano file's separate treble/bass-clef
-              tracks) into a single note stream — pair with "Full chords" below for the best result.
-            </p>
-            <div className="mt-1 space-y-1 rounded border border-slate-600 bg-slate-900 p-2">
-              {parsed.tracks.map((t) => (
-                <label key={t.index} className="flex items-center gap-1.5 text-sm text-slate-100">
-                  <input
-                    type="checkbox"
-                    checked={selectedTrackIndices.includes(t.index)}
-                    onChange={() => toggleTrack(t.index)}
+              <Checkbox
+                checked={dropAccidentals}
+                onCheckedChange={setDropAccidentals}
+                label="Drop accidentals"
+                hint="Removes notes that aren’t already on the diatonic scale instead of snapping them to the nearest scale degree. Independent of the range setting above — this is about pitch, not register."
+              />
+            </OptionGroup>
+
+            <OptionGroup label="Performance">
+              <Field label="Chord density">
+                <div className="flex flex-wrap items-center gap-3">
+                  <RadioGroup
+                    name="convert-chord-mode"
+                    value={chordMode}
+                    onChange={setChordMode}
+                    options={[
+                      { value: 'melody', label: 'Melody only' },
+                      { value: 'chords', label: 'Full chords' }
+                    ]}
                   />
-                  {t.name} ({t.noteCount} notes){t.index === parsed.suggestedTrackIndex ? ' — suggested' : ''}
-                </label>
-              ))}
-            </div>
-            {selectedTrackIndices.length === 0 && (
-              <p className="mt-1 text-xs text-red-400">Select at least one track.</p>
-            )}
-          </div>
+                  {chordMode === 'chords' && (
+                    <label className="flex items-center gap-2 text-sm text-moon-200">
+                      Max notes
+                      <NumberInput
+                        width="xs"
+                        min={1}
+                        max={5}
+                        value={maxChordNotes}
+                        onChange={(e) => setMaxChordNotes(Number(e.target.value))}
+                      />
+                    </label>
+                  )}
+                </div>
+              </Field>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-300">
-              Key {parsed.detectedKey ? '(from file, editable)' : '(estimated, editable)'}
-            </label>
-            <select
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-            >
-              {MAJOR_KEY_NAMES.map((name) => (
-                <option key={name} value={name}>
-                  {name} Major
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300">Title</label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
+              <Checkbox
+                checked={sustainCapable}
+                onCheckedChange={setSustainCapable}
+                label="Target instrument supports sustain"
+                hint="Triumph Violin, Cello, Harmonica, Electric Guitar, Voice of AURORA, Triumph Saxophone."
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300">Artist</label>
-              <input
-                type="text"
-                value={artist}
-                onChange={(e) => setArtist(e.target.value)}
-                className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-              />
-            </div>
-          </div>
-
-          <div>
-            <span className="block text-sm font-medium text-slate-300">Chord density</span>
-            <div className="mt-1 flex gap-4 text-sm text-slate-300">
-              <label className="flex items-center gap-1.5">
-                <input
-                  type="radio"
-                  checked={chordMode === 'melody'}
-                  onChange={() => setChordMode('melody')}
-                />
-                Melody only
-              </label>
-              <label className="flex items-center gap-1.5">
-                <input
-                  type="radio"
-                  checked={chordMode === 'chords'}
-                  onChange={() => setChordMode('chords')}
-                />
-                Full chords
-              </label>
-              {chordMode === 'chords' && (
-                <label className="flex items-center gap-1.5">
-                  Max notes
-                  <input
-                    type="number"
-                    min={1}
-                    max={5}
-                    value={maxChordNotes}
-                    onChange={(e) => setMaxChordNotes(Number(e.target.value))}
-                    className="w-14 rounded border border-slate-600 bg-slate-900 px-1.5 py-0.5 text-sm text-slate-100"
+              {sustainCapable && (
+                <label className="flex items-center gap-2 text-sm text-moon-200">
+                  Sustain threshold (ms)
+                  <NumberInput
+                    width="xs"
+                    min={0}
+                    value={sustainThresholdMs}
+                    onChange={(e) => setSustainThresholdMs(Number(e.target.value))}
                   />
                 </label>
               )}
-            </div>
-          </div>
 
-          <div>
-            <label className="flex items-center gap-1.5 text-sm text-slate-300">
-              <input type="checkbox" checked={sustainCapable} onChange={(e) => setSustainCapable(e.target.checked)} />
-              Target instrument supports sustain (Triumph Violin, Cello, Harmonica, Electric
-              Guitar, Voice of AURORA, Triumph Saxophone)
-            </label>
-            {sustainCapable && (
-              <label className="mt-2 flex items-center gap-1.5 text-sm text-slate-300">
-                Sustain threshold (ms)
-                <input
-                  type="number"
-                  min={0}
-                  value={sustainThresholdMs}
-                  onChange={(e) => setSustainThresholdMs(Number(e.target.value))}
-                  className="w-20 rounded border border-slate-600 bg-slate-900 px-1.5 py-0.5 text-sm text-slate-100"
-                />
-              </label>
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <Field label="Title">
+                  <TextInput value={title} onChange={(e) => setTitle(e.target.value)} />
+                </Field>
+                <Field label="Artist">
+                  <TextInput value={artist} onChange={(e) => setArtist(e.target.value)} />
+                </Field>
+              </div>
+            </OptionGroup>
+          </div>
+        )
+      }
+      reportSlot={
+        song && report ? (
+          <div className="space-y-5">
+            <SegmentedProgress
+              segments={[
+                { label: `Unaltered ${pct(report.notesUnaltered)}`, value: report.notesUnaltered, tone: 'gold' },
+                {
+                  label: `Octave-shifted ${pct(report.notesOctaveShifted)}`,
+                  value: report.notesOctaveShifted,
+                  tone: 'neutral'
+                },
+                { label: `Dropped ${pct(report.notesDropped)}`, value: report.notesDropped, tone: 'bad' }
+              ]}
+            />
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatTile
+                label="Unaltered"
+                tone="gold"
+                value={pct(report.notesUnaltered)}
+                sub={`${report.notesUnaltered} notes`}
+              />
+              <StatTile
+                label="Octave-shifted"
+                value={pct(report.notesOctaveShifted)}
+                sub={`${report.notesOctaveShifted} notes`}
+              />
+              <StatTile
+                label="Dropped"
+                tone={report.notesDropped > 0 ? 'bad' : 'neutral'}
+                value={pct(report.notesDropped)}
+                sub={`${report.notesDropped} notes`}
+              />
+              <StatTile label="Total" value={report.notesTotal} sub="notes in sheet" />
+            </div>
+
+            <div className="flex flex-wrap gap-2 border-t border-cobalt-700/25 pt-4">
+              <Button
+                variant="success"
+                icon={<IconSave size={15} />}
+                loading={saving}
+                onClick={() => void handleSave()}
+              >
+                {saving ? 'Saving…' : 'Save to library'}
+              </Button>
+              <Button loading={exportingDev} onClick={() => void handleDevExport()}>
+                {exportingDev ? 'Exporting…' : 'Export raw + converted (dev)'}
+              </Button>
+            </div>
+
+            {savedPath && <Alert tone="success">Saved to {savedPath}</Alert>}
+            {devExportPaths && (
+              <p className="font-mono text-[11px] break-all text-moon-500">
+                Exported {devExportPaths.raw} and {devExportPaths.converted}
+              </p>
             )}
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300">Notes outside the 2-octave grid</label>
-            <select
-              value={outOfRangeMode}
-              onChange={(e) => setOutOfRangeMode(e.target.value as OutOfRangeMode)}
-              className="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
-            >
-              <option value="shift">Shift by octaves to fit</option>
-              <option value="clamp">Clamp to nearest edge note</option>
-              <option value="drop">Drop the note</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="flex items-center gap-1.5 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={dropAccidentals}
-                onChange={(e) => setDropAccidentals(e.target.checked)}
-              />
-              Drop accidentals
-            </label>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Removes notes that aren&apos;t already on the diatonic scale instead of snapping
-              them to the nearest scale degree. Independent of the range setting above — this is
-              about pitch, not register.
-            </p>
-          </div>
-
-          <button
-            onClick={() => void handleConvert()}
-            disabled={converting || selectedTrackIndices.length === 0}
-            className="rounded bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-          >
-            {converting ? 'Converting…' : 'Convert'}
-          </button>
-        </div>
-      )}
-
-      {song && report && (
-        <div className="mt-6 space-y-3 rounded border border-slate-700 bg-slate-800/50 p-4">
-          <h2 className="text-sm font-semibold text-slate-200">Conversion report</h2>
-          <ul className="space-y-1 text-sm text-slate-300">
-            <li>
-              Unaltered: {report.notesUnaltered} ({pct(report.notesUnaltered)})
-            </li>
-            <li>
-              Octave-shifted: {report.notesOctaveShifted} ({pct(report.notesOctaveShifted)})
-            </li>
-            <li>
-              Dropped: {report.notesDropped} ({pct(report.notesDropped)})
-            </li>
-            <li className="text-slate-400">Total: {report.notesTotal}</li>
-          </ul>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => void handleSave()}
-              disabled={saving}
-              className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save to library'}
-            </button>
-            <button
-              onClick={() => void handleDevExport()}
-              disabled={exportingDev}
-              className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-600 disabled:opacity-50"
-            >
-              {exportingDev ? 'Exporting…' : 'Export raw + converted (dev)'}
-            </button>
-          </div>
-
-          {savedPath && <p className="text-sm text-emerald-400">Saved to {savedPath}</p>}
-          {devExportPaths && (
-            <p className="text-xs text-slate-500">
-              Exported {devExportPaths.raw} and {devExportPaths.converted}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+        ) : undefined
+      }
+    />
   )
 }
+
