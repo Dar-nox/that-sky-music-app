@@ -27,6 +27,18 @@ export const GRID_DEGREE_SPAN = 14
 const MAX_TRY_SHIFT_OCTAVES = 2
 
 /**
+ * Either a fixed root pitch class for the whole song, or a per-timestamp lookup (e.g. for
+ * key-segment boundaries when a song modulates). Normalizing both shapes behind one type lets
+ * every caller write one code path regardless of whether key segmentation is active, and keeps
+ * every existing call site that passes a plain number compiling and behaving identically.
+ */
+export type RootPcInput = number | ((timeMs: number) => number)
+
+export function rootPcLookup(input: RootPcInput): (timeMs: number) => number {
+  return typeof input === 'function' ? input : () => input
+}
+
+/**
  * Snaps one chromatic MIDI pitch to the nearest diatonic degree of the major scale
  * rooted at `rootPc`, returning a *global* scale-degree index (7 per octave, can be
  * negative or span many octaves) plus whether the snap moved the pitch at all.

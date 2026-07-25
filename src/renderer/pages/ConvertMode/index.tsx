@@ -41,6 +41,8 @@ export function ConvertMode() {
   const [song, setSong] = useState<Song | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedPath, setSavedPath] = useState<string | null>(null)
+  const [exportingDev, setExportingDev] = useState(false)
+  const [devExportPaths, setDevExportPaths] = useState<{ raw: string; converted: string } | null>(null)
 
   useEffect(() => {
     window.skyAPI
@@ -90,6 +92,7 @@ export function ConvertMode() {
     setError(null)
     setSong(null)
     setSavedPath(null)
+    setDevExportPaths(null)
 
     const options: ConvertOptions = {
       trackIndices: selectedTrackIndices,
@@ -128,6 +131,30 @@ export function ConvertMode() {
       setError(err instanceof Error ? err.message : 'Failed to save song')
     } finally {
       setSaving(false)
+    }
+  }
+
+  /**
+   * Dev-only: writes the unaltered MIDI parse and this conversion side by side into dev-exports/,
+   * for manually comparing against the Arranger's output on the same source file.
+   */
+  async function handleDevExport(): Promise<void> {
+    if (!buffer || !song) return
+
+    setExportingDev(true)
+    setError(null)
+
+    try {
+      const baseName = fileName ?? 'unknown.mid'
+      const [raw, converted] = await Promise.all([
+        window.skyAPI.devExportRawMidi(buffer, baseName),
+        window.skyAPI.devExportJson(song, baseName, 'converted')
+      ])
+      setDevExportPaths({ raw, converted })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Dev export failed')
+    } finally {
+      setExportingDev(false)
     }
   }
 
@@ -328,15 +355,29 @@ export function ConvertMode() {
             <li className="text-slate-400">Total: {report.notesTotal}</li>
           </ul>
 
-          <button
-            onClick={() => void handleSave()}
-            disabled={saving}
-            className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save to library'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save to library'}
+            </button>
+            <button
+              onClick={() => void handleDevExport()}
+              disabled={exportingDev}
+              className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-600 disabled:opacity-50"
+            >
+              {exportingDev ? 'Exporting…' : 'Export raw + converted (dev)'}
+            </button>
+          </div>
 
           {savedPath && <p className="text-sm text-emerald-400">Saved to {savedPath}</p>}
+          {devExportPaths && (
+            <p className="text-xs text-slate-500">
+              Exported {devExportPaths.raw} and {devExportPaths.converted}
+            </p>
+          )}
         </div>
       )}
     </div>

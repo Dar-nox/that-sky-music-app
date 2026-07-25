@@ -19,6 +19,13 @@ function normalizeToMajorKeyName(key: string): string {
   }
 }
 
+function formatMmSs(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
 const ACCOMPANIMENTS: { value: AccompanimentMode; label: string; hint: string }[] = [
   { value: 'full', label: 'Full', hint: 'A voicing under every melody note — recommended' },
   { value: 'bass', label: 'Bass only', hint: 'Just the bass line under the melody' },
@@ -50,11 +57,17 @@ export function ArrangerMode() {
   const [melodyPlacement, setMelodyPlacement] = useState<MelodyPlacement>(
     DEFAULT_ARRANGE_OPTIONS.melodyPlacement
   )
+  const [keySegmentation, setKeySegmentation] = useState(DEFAULT_ARRANGE_OPTIONS.keySegmentation)
+  const [responsiveWindowing, setResponsiveWindowing] = useState(
+    DEFAULT_ARRANGE_OPTIONS.responsiveWindowing
+  )
 
   const [arranging, setArranging] = useState(false)
   const [song, setSong] = useState<Song | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedPath, setSavedPath] = useState<string | null>(null)
+  const [exportingDev, setExportingDev] = useState(false)
+  const [devExportPaths, setDevExportPaths] = useState<{ raw: string; arranged: string } | null>(null)
 
   useEffect(() => {
     window.skyAPI
@@ -106,15 +119,8 @@ export function ArrangerMode() {
     }
   }
 
-  async function handleArrange(): Promise<void> {
-    if (!buffer || !parsed || selectedTrackIndices.length === 0) return
-
-    setArranging(true)
-    setError(null)
-    setSong(null)
-    setSavedPath(null)
-
-    const options: ArrangeOptions = {
+  function buildOptions(): ArrangeOptions {
+    return {
       trackIndices: selectedTrackIndices,
       key,
       autoKey,
@@ -126,10 +132,24 @@ export function ArrangerMode() {
       accompaniment,
       windowMode,
       melodyPlacement,
+      keySegmentation,
+      responsiveWindowing,
       sourceFileName: fileName ?? 'unknown.mid',
       title: title || 'Untitled',
       artist
     }
+  }
+
+  async function handleArrange(): Promise<void> {
+    if (!buffer || !parsed || selectedTrackIndices.length === 0) return
+
+    setArranging(true)
+    setError(null)
+    setSong(null)
+    setSavedPath(null)
+    setDevExportPaths(null)
+
+    const options = buildOptions()
 
     try {
       const result = await window.skyAPI.arrangeMidi(buffer, options)
@@ -154,6 +174,31 @@ export function ArrangerMode() {
       setError(err instanceof Error ? err.message : 'Failed to save song')
     } finally {
       setSaving(false)
+    }
+  }
+
+  /**
+   * Dev-only: writes the unaltered MIDI parse and this arrangement side by side into
+   * dev-exports/, for manually comparing what the Arranger changed against the source.
+   */
+  async function handleDevExport(): Promise<void> {
+    if (!buffer || !song) return
+
+    setExportingDev(true)
+    setError(null)
+
+    try {
+      const baseName = fileName ?? 'unknown.mid'
+      const diagnostics = await window.skyAPI.arrangeMidiDiagnostics(buffer, buildOptions())
+      const [raw, arranged] = await Promise.all([
+        window.skyAPI.devExportRawMidi(buffer, baseName),
+        window.skyAPI.devExportJson(song, baseName, 'arranged', diagnostics)
+      ])
+      setDevExportPaths({ raw, arranged })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Dev export failed')
+    } finally {
+      setExportingDev(false)
     }
   }
 
@@ -259,6 +304,19 @@ export function ArrangerMode() {
                 ))}
               </select>
             )}
+            <label className="mt-2 flex items-center gap-1.5 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={keySegmentation}
+                onChange={(e) => setKeySegmentation(e.target.checked)}
+              />
+              Detect key changes (experimental)
+            </label>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Looks for a sustained, confident modulation partway through the song instead of
+              forcing the whole piece through one key. Conservative by design — shouldn&apos;t
+              fire on a typical chromatic-but-stable song, only a genuine, lasting key change.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -323,6 +381,24 @@ export function ArrangerMode() {
               <option value="adaptive">Adaptive — follow the melody, shift only between phrases</option>
               <option value="fixed">Fixed — one range for the whole song</option>
             </select>
+            {windowMode === 'adaptive' && (
+              <>
+                <label className="mt-2 flex items-center gap-1.5 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={responsiveWindowing}
+                    onChange={(e) => setResponsiveWindowing(e.target.checked)}
+                  />
+                  Responsive octave re-anchoring (experimental)
+                </label>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Unproven — allows the range to also shift mid-phrase, not just between phrases,
+                  for a melody that drifts far without ever pausing. This trades heavy note
+                  folding for a possible audible register jump mid-line; A/B it by ear rather than
+                  trusting the report numbers.
+                </p>
+              </>
+            )}
           </div>
 
           <div>
@@ -399,6 +475,20 @@ export function ArrangerMode() {
             )}
           </div>
 
+          {report.keySegments && report.keySegments.length > 1 && (
+            <div className="text-sm text-slate-300">
+              <span className="font-medium">Detected key changes:</span>
+              <ul className="mt-1 space-y-0.5 text-xs text-slate-400">
+                {report.keySegments.map((segment, i) => (
+                  <li key={i}>
+                    {formatMmSs(segment.startMs)}–{formatMmSs(segment.endMs)}: {segment.key} Major (
+                    {segment.keyFitPercent}% fit)
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-slate-300">
             <li>Notes in: {report.notesIn}</li>
             <li>Notes out: {report.notesOut}</li>
@@ -409,6 +499,7 @@ export function ArrangerMode() {
             <li>Range shifts: {report.windowShifts}</li>
             <li>Doublings merged: {report.gridCollisionsMerged}</li>
             <li>Voicing-reduced: {report.voicingReduced}</li>
+            <li>Dissonances avoided: {report.dissonancesAvoided}</li>
             <li>Accompaniment removed by mode: {report.densityThinned}</li>
             <li>Register-suppressed: {report.registerSuppressed}</li>
           </ul>
@@ -418,15 +509,29 @@ export function ArrangerMode() {
             before sending real keystrokes to the game.
           </p>
 
-          <button
-            onClick={() => void handleSave()}
-            disabled={saving}
-            className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save to library'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save to library'}
+            </button>
+            <button
+              onClick={() => void handleDevExport()}
+              disabled={exportingDev}
+              className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-600 disabled:opacity-50"
+            >
+              {exportingDev ? 'Exporting…' : 'Export raw + arranged (dev)'}
+            </button>
+          </div>
 
           {savedPath && <p className="text-sm text-emerald-400">Saved to {savedPath}</p>}
+          {devExportPaths && (
+            <p className="text-xs text-slate-500">
+              Exported {devExportPaths.raw} and {devExportPaths.arranged}
+            </p>
+          )}
         </div>
       )}
     </div>

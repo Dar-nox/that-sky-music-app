@@ -44,9 +44,17 @@ export function parseMidiFile(buffer: ArrayBuffer): ParsedMidiInternal {
 }
 
 /**
- * Fewest-simultaneous-overlapping-notes-wins heuristic for picking a starting melody
- * track suggestion (CLAUDE.md §6 step 2) — ties broken by higher average pitch. This is
+ * Higher-average-pitch-wins heuristic for picking a starting melody track suggestion
+ * (CLAUDE.md §6 step 2) — ties broken by fewer simultaneous overlapping notes. This is
  * only ever a suggestion; the user picks the real track in the UI.
+ *
+ * Pitch height is the primary signal, not polyphony: across every real multi-track piano
+ * split tested (a melody hand plus a bass/accompaniment hand), the bass/accompaniment track
+ * consistently had *lower* polyphony than the real melody — a sparse or arpeggiated bass line
+ * is simpler than a played tune — so a polyphony-first heuristic picked the wrong track every
+ * time despite a large (13+ semitone), unambiguous pitch gap between the two hands. Polyphony
+ * still matters when pitch doesn't clearly separate the candidates (e.g. two tracks sitting in
+ * similar registers), which is why it remains the tie-break rather than being dropped.
  *
  * Also reused by the Arranger (src/main/midi/arrange/index.ts) to bias voice-role assignment
  * toward whichever selected track is most likely the melody, instead of relying on pitch height
@@ -68,7 +76,7 @@ export function suggestMelodyTrackIndex(tracks: ParsedMidiTrackInternal[]): numb
     return { index: track.index, avgPolyphony, avgPitch }
   })
 
-  scored.sort((a, b) => a.avgPolyphony - b.avgPolyphony || b.avgPitch - a.avgPitch)
+  scored.sort((a, b) => b.avgPitch - a.avgPitch || a.avgPolyphony - b.avgPolyphony)
   return scored[0].index
 }
 

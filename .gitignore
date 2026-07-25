@@ -13,6 +13,9 @@ Thumbs.db
 # electron-builder output
 build
 
+# Raw/arranged JSON pairs exported from the Arranger for manual before/after comparison
+dev-exports/
+
 # IDE
 .vscode/*
 !.vscode/extensions.json

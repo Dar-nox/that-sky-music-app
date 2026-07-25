@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_ARRANGE_OPTIONS, type ArrangeOptions } from '@shared/arranger'
 import type { ParsedMidiNote } from '@shared/midi'
-import { arrangeMidiToSong } from './index'
+import { arrangeMidiToSong, arrangeMidiWithDiagnostics } from './index'
 import type { ParsedMidiInternal } from '../parse'
 
 function options(overrides: Partial<ArrangeOptions> = {}): ArrangeOptions {
@@ -215,14 +215,46 @@ describe('arrangeMidiToSong', () => {
     expect(song.meta.detectedKey).toBe('G Major')
   })
 
+  it("prefers the file's key-signature metadata over the histogram detector when autoKey is on", () => {
+    // Every note is exactly on the Db major scale, so the histogram detector would pick Db
+    // (100% coverage) — but the file's own metadata says E, which should win regardless.
+    const dbMajorNotes: ParsedMidiNote[] = [61, 63, 65, 66, 68, 70, 72].map((midi, i) =>
+      note(midi, i * 300, 280)
+    )
+    const parsed: ParsedMidiInternal = {
+      bpm: 120,
+      durationMs: 3000,
+      detectedKey: 'E',
+      tracks: [{ index: 0, name: 'Melody', notes: dbMajorNotes }]
+    }
+
+    const song = arrangeMidiToSong(parsed, options({ autoKey: true }))
+    expect(song.meta.arrangement?.key).toBe('E')
+    expect(song.meta.arrangement?.keyFitPercent).toBeLessThan(100)
+  })
+
+  it('falls back to histogram detection when the file has no key-signature metadata', () => {
+    const parsed: ParsedMidiInternal = { ...twoTrackPiano(), detectedKey: null }
+    const song = arrangeMidiToSong(parsed, options({ trackIndices: [0, 1] }))
+
+    expect(song.meta.arrangement?.key).toBe('C')
+  })
+
+  it("falls back to histogram detection if the file's key metadata is unrecognized", () => {
+    const parsed: ParsedMidiInternal = { ...twoTrackPiano(), detectedKey: 'not-a-real-key' }
+
+    expect(() => arrangeMidiToSong(parsed, options({ trackIndices: [0, 1] }))).not.toThrow()
+    const song = arrangeMidiToSong(parsed, options({ trackIndices: [0, 1] }))
+    expect(song.meta.arrangement?.key).toBe('C')
+  })
+
   it('throws when no tracks are selected or a track does not exist', () => {
     expect(() => arrangeMidiToSong(twoTrackPiano(), options({ trackIndices: [] }))).toThrow()
     expect(() => arrangeMidiToSong(twoTrackPiano(), options({ trackIndices: [9] }))).toThrow()
   })
 
   it('auto-resolves the melody track and reflects it in the report', () => {
-    // Right hand has no internal overlap (same as left hand) but a higher average pitch, so the
-    // fewest-simultaneous-notes heuristic ties and breaks toward it.
+    // Right hand has the higher average pitch, so the melody-track heuristic picks it directly.
     const song = arrangeMidiToSong(twoTrackPiano(), options({ trackIndices: [0, 1] }))
 
     expect(song.meta.arrangement?.melodyTrackIndex).toBe(0)
@@ -266,5 +298,170 @@ describe('arrangeMidiToSong', () => {
     expect(song.meta.arrangement?.melodyTrackIndex).toBe(0)
     expect(song.notes.length).toBeGreaterThan(0)
     expect(song.notes.length).toBeLessThanOrEqual(melody.length + accompaniment.length)
+  })
+})
+
+/** A single melody track fully diatonic to C for the first half, then hard-switching to a key
+ * a semitone away (Db) for the second half — mirrors the confirmed "Hopes and Dreams" modulation
+ * shape from dev-exports/findings.md. */
+function modulatingMelody(): ParsedMidiInternal {
+  const cPcs = [0, 2, 4, 5, 7, 9, 11]
+  const dbPcs = [1, 3, 5, 6, 8, 10, 0]
+  const notes: ParsedMidiNote[] = []
+  let t = 0
+  let i = 0
+  while (t < 20000) {
+    notes.push(note(60 + cPcs[i % cPcs.length], t, 240))
+    t += 250
+    i++
+  }
+  i = 0
+  while (t < 40000) {
+    notes.push(note(60 + dbPcs[i % dbPcs.length], t, 240))
+    t += 250
+    i++
+  }
+  return { bpm: 120, durationMs: 40000, detectedKey: 'C', tracks: [{ index: 0, name: 'Melody', notes }] }
+}
+
+describe('keySegmentation', () => {
+  it('reports the detected modulation when enabled', () => {
+    const song = arrangeMidiToSong(modulatingMelody(), options({ autoKey: true, keySegmentation: true }))
+
+    expect(song.meta.arrangement?.keySegments).toBeDefined()
+    expect(song.meta.arrangement?.keySegments).toHaveLength(2)
+  })
+
+  it('measurably changes note placement in the modulated section versus the flag off', () => {
+    // With segmentation off, every note in the second (Db) phase gets quantized against the
+    // wrong (C) key for that stretch; with it on, the same notes are quantized against their own
+    // correct key. That's a different chromatic-to-diatonic snap for most of those notes, so the
+    // grid cells they land on should differ, not just the report's metadata.
+    const parsed = modulatingMelody()
+    const off = arrangeMidiToSong(parsed, options({ autoKey: true, keySegmentation: false }))
+    const on = arrangeMidiToSong(parsed, options({ autoKey: true, keySegmentation: true }))
+
+    const cellsAfterSwitch = (song: typeof off): string =>
+      song.notes
+        .filter((n) => n.timeMs >= 20000)
+        .map((n) => `${n.row}${n.col}`)
+        .join(',')
+
+    expect(cellsAfterSwitch(on)).not.toBe(cellsAfterSwitch(off))
+  })
+
+  it('does not report key segments for a uniformly chromatic song (false-positive guard)', () => {
+    const pattern = [0, 4, 7, 1] // 3 diatonic notes + 1 chromatic passing tone, repeated throughout
+    const notes: ParsedMidiNote[] = []
+    let t = 0
+    let i = 0
+    while (t < 40000) {
+      notes.push(note(60 + pattern[i % pattern.length], t, 240))
+      t += 250
+      i++
+    }
+    const parsed: ParsedMidiInternal = {
+      bpm: 120,
+      durationMs: 40000,
+      detectedKey: 'C',
+      tracks: [{ index: 0, name: 'Melody', notes }]
+    }
+
+    const song = arrangeMidiToSong(parsed, options({ autoKey: true, keySegmentation: true }))
+    expect(song.meta.arrangement?.keySegments).toBeUndefined()
+  })
+
+  it('both new options default to false, unchanged from every other test in this file', () => {
+    expect(DEFAULT_ARRANGE_OPTIONS.keySegmentation).toBe(false)
+    expect(DEFAULT_ARRANGE_OPTIONS.responsiveWindowing).toBe(false)
+  })
+})
+
+describe('responsiveWindowing (experimental)', () => {
+  function wideContinuousMelody(): ParsedMidiInternal {
+    const notes: ParsedMidiNote[] = [
+      ...Array.from({ length: 50 }, (_, i) => note([48, 50, 52][i % 3], i * 200, 180)),
+      ...Array.from({ length: 50 }, (_, i) => note([84, 86, 88][i % 3], 10000 + i * 200, 180))
+    ]
+    return { bpm: 120, durationMs: 20000, detectedKey: 'C', tracks: [{ index: 0, name: 'Melody', notes }] }
+  }
+
+  it('changes windowShifts on a wide continuous passage versus the flag off', () => {
+    const parsed = wideContinuousMelody()
+    const off = arrangeMidiToSong(parsed, options({ responsiveWindowing: false }))
+    const on = arrangeMidiToSong(parsed, options({ responsiveWindowing: true }))
+
+    expect(on.meta.arrangement!.windowShifts).toBeGreaterThan(off.meta.arrangement!.windowShifts)
+  })
+})
+
+describe('cross-event dissonance avoidance', () => {
+  it('drops an accompaniment note that overlaps a still-sounding melody note a step away', () => {
+    // Melody (72) sustains for 1000ms (sustainCapable + a low threshold makes it hold-eligible).
+    // The accompaniment note (71) fires 94ms later — well within the melody's real sounding
+    // window — and lands a single scale step from it. These are two separate chord events
+    // (different exact timestamps), so only the cross-event pass can catch this.
+    const parsed: ParsedMidiInternal = {
+      bpm: 120,
+      durationMs: 2000,
+      detectedKey: 'C',
+      tracks: [
+        { index: 0, name: 'Melody', notes: [note(72, 0, 1000)] },
+        { index: 1, name: 'Accompaniment', notes: [note(71, 94, 100)] }
+      ]
+    }
+
+    const song = arrangeMidiToSong(
+      parsed,
+      options({
+        trackIndices: [0, 1],
+        autoMelodyTrack: false,
+        melodyTrackIndex: 0,
+        sustainCapable: true,
+        sustainThresholdMs: 200
+      })
+    )
+
+    expect(song.notes).toHaveLength(1)
+    expect(song.meta.arrangement?.dissonancesAvoided).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('arrangeMidiWithDiagnostics', () => {
+  it('keySegmentPlan is null when keySegmentation is off', () => {
+    const { diagnostics } = arrangeMidiWithDiagnostics(
+      twoTrackPiano(),
+      options({ trackIndices: [0, 1], keySegmentation: false })
+    )
+
+    expect(diagnostics.keySegmentPlan).toBeNull()
+    expect(diagnostics.options.keySegmentation).toBe(false)
+  })
+
+  it('keySegmentPlan is populated with a chunk trace when keySegmentation is on', () => {
+    const { diagnostics } = arrangeMidiWithDiagnostics(
+      modulatingMelody(),
+      options({ autoKey: true, keySegmentation: true })
+    )
+
+    expect(diagnostics.keySegmentPlan).not.toBeNull()
+    expect(diagnostics.keySegmentPlan!.chunkTrace.length).toBeGreaterThan(0)
+    expect(diagnostics.keySegmentPlan!.segments).toHaveLength(2)
+  })
+
+  it('windowPlan segments carry reason tags', () => {
+    const { diagnostics } = arrangeMidiWithDiagnostics(twoTrackPiano(), options({ trackIndices: [0, 1] }))
+
+    expect(diagnostics.windowPlan.segments[0].reason).toBeDefined()
+  })
+
+  it('produces the same notes as arrangeMidiToSong', () => {
+    const parsed = twoTrackPiano()
+    const opts = options({ trackIndices: [0, 1] })
+
+    const song1 = arrangeMidiToSong(parsed, opts)
+    const { song: song2 } = arrangeMidiWithDiagnostics(parsed, opts)
+
+    expect(song2.notes).toEqual(song1.notes)
   })
 })

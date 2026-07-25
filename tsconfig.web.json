@@ -25,5 +25,6 @@
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts",
     "src/preload/index.d.ts"
-  ]
+  ],
+  "exclude": ["**/*-Darnocs.*"]
 }

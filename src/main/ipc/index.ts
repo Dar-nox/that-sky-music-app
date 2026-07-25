@@ -2,17 +2,18 @@ import { dialog, ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ConvertOptions } from '@shared/midi'
-import type { ArrangeOptions } from '@shared/arranger'
+import type { ArrangeOptions, ArrangerDiagnostics } from '@shared/arranger'
 import type { Song } from '@shared/song'
 import { getSettings, setSettings, getLibrary } from '../store'
 import { parseMidiFile, summarizeParsedMidi } from '../midi/parse'
 import { convertMidiToSong } from '../midi/convert'
-import { arrangeMidiToSong } from '../midi/arrange'
+import { arrangeMidiToSong, arrangeMidiWithDiagnostics } from '../midi/arrange'
 import { saveSong, loadSong, deleteSong, resolveDataFolder } from '../songFiles'
 import { importExternalSheet } from '../importAdapters'
 import { playbackScheduler } from '../scheduler/playback'
 import { getMainWindow } from '../windowRef'
 import { refreshGlobalHotkeys } from '../hotkeys'
+import { exportRawMidiJson, exportDevJson } from '../devExport'
 
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.ping, async () => 'pong')
@@ -52,6 +53,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.arrangeMidi, async (_event, buffer: ArrayBuffer, options: ArrangeOptions) => {
     return arrangeMidiToSong(parseMidiFile(buffer), options)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.arrangeMidiDiagnostics, async (_event, buffer: ArrayBuffer, options: ArrangeOptions) => {
+    return arrangeMidiWithDiagnostics(parseMidiFile(buffer), options).diagnostics
   })
 
   ipcMain.handle(IPC_CHANNELS.saveSong, async (_event, song: Song) => {
@@ -100,6 +105,23 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.playbackPanic, async () => playbackScheduler.panic())
+
+  ipcMain.handle(IPC_CHANNELS.devExportRawMidi, async (_event, buffer: ArrayBuffer, sourceFileName: string) => {
+    return exportRawMidiJson(parseMidiFile(buffer), sourceFileName)
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.devExportJson,
+    async (
+      _event,
+      song: Song,
+      sourceFileName: string,
+      kind: 'arranged' | 'converted',
+      diagnostics?: ArrangerDiagnostics
+    ) => {
+      return exportDevJson(song, sourceFileName, kind, diagnostics)
+    }
+  )
 
   playbackScheduler.onEvent((event) => {
     getMainWindow()?.webContents.send(IPC_CHANNELS.playbackEvent, event)

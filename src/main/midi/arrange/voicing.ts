@@ -1,5 +1,11 @@
 import type { GridCol, GridRow } from '@shared/song'
-import { GRID_DEGREE_SPAN, degreeToGridPosition, nearestDiatonicDegree } from '../quantize'
+import {
+  GRID_DEGREE_SPAN,
+  degreeToGridPosition,
+  nearestDiatonicDegree,
+  rootPcLookup,
+  type RootPcInput
+} from '../quantize'
 import type { RoledChordEvent, RoledNote, VoiceRole } from './voices'
 
 export interface PlacedNote {
@@ -23,6 +29,9 @@ export interface VoicingResult {
   octaveFolds: number
   gridCollisionsMerged: number
   voicingReduced: number
+  /** Notes dropped specifically because keeping them would clash (land one scale step from a
+   * note already kept), not because of the maxChordNotes cap — see placeAndReduce's cap step. */
+  dissonancesAvoided: number
 }
 
 /** Folds a global scale degree into the window by whole octaves, nearest-first. */
@@ -31,6 +40,29 @@ function foldIntoWindow(globalDegree: number, windowStart: number): number {
   while (folded < windowStart) folded += 7
   while (folded > windowStart + GRID_DEGREE_SPAN) folded -= 7
   return folded
+}
+
+/**
+ * The diatonic 2nd — exactly one scale step apart — is the harshest interval this grid can
+ * produce: Sky has no per-note velocity to soften a clash the way a real instrument's voicing
+ * could, so two notes a step apart read as equally loud and mostly indistinguishable rather than
+ * as an intentional color tone.
+ *
+ * A 2nd stacked with an octave (a 9th) — or, symmetrically, a 7th stacked with an octave (a
+ * 14th) — carries the same clash, just moved an octave away. Standard tonal harmony already
+ * treats 2nds and 7ths as the dissonant scale-step intervals for exactly this reason: a 7th is a
+ * 2nd's mirror image (2nd + 7th = an octave). Real-song testing confirmed this isn't just theory —
+ * a bass note and a melody note a 9th apart (e.g. a low A2 against a high B5) read as clearly
+ * clashing on Sky's grid, since the window only spans two octaves and there's no velocity or
+ * decay to separate them the way register would in a real mix. `% 7` folds any degree gap onto a
+ * single octave's worth of interval classes before checking, so a 2nd/9th (remainder 1) or a
+ * 7th/14th (remainder 6) is caught regardless of how many octaves apart the two notes actually
+ * are; every other interval (3rds, 4ths, 5ths, 6ths and their octave-compounded versions) stays
+ * consonant.
+ */
+export function isDissonant(degreeA: number, degreeB: number): boolean {
+  const step = Math.abs(degreeA - degreeB) % 7
+  return step === 1 || step === 6
 }
 
 /**
@@ -54,6 +86,16 @@ function foldIntoWindow(globalDegree: number, windowStart: number): number {
  * moves smoothly instead of leaping an octave whenever the melody's own register happens to
  * shift. Inner voices don't get this — they're the first thing `maxChordNotes` trims away, so
  * tracking their continuity has little payoff.
+ *
+ * This does *not* try to dodge a melody clash by picking a different octave. Every below-melody
+ * placement of the same note sits exactly a multiple of 7 scale-steps from any other, and
+ * `isDissonant` only cares about that gap mod 7 — so every octave copy of a given note has
+ * identically-clashing (or identically-safe) status against a fixed melody degree; there is no
+ * octave choice that changes the answer. (An earlier version of this function tried anyway; it
+ * only ever appeared to work because the old, narrower dissonance check wasn't mod-7-invariant —
+ * it could tell a literal 2nd from a 9th even though they're the same clash. Real clash-avoidance
+ * for these notes happens one level up, in `placeAndReduce`'s cap step, which can drop the note
+ * entirely rather than pretend an octave swap fixes anything.)
  */
 function placeDegree(
   globalDegree: number,
@@ -111,6 +153,12 @@ function voicingPriority(note: PlacedNote, bassDegree: number | null): number {
   return 4
 }
 
+// Given the interval arithmetic above, a kept third and a kept fifth can never land exactly one
+// scale step apart from each other (their bass-relative residues are 2 and 4 mod 7, so their
+// minimum possible separation is 2) — the clashes placeAndReduce's cap step actually needs to
+// catch are an "other inner" note clashing with anything, or a third/fifth forced into a melody
+// clash by placeDegree's own tight-window fallback.
+
 /**
  * Maps each chord event onto the grid, then reduces it to a playable voicing.
  *
@@ -119,17 +167,22 @@ function voicingPriority(note: PlacedNote, bassDegree: number | null): number {
  *     once folded into a 2-octave window. On a piano that's a doubling; in Sky it's the same
  *     key pressed twice at the same instant, which sounds once and wastes a slot the chord
  *     could have spent on a real harmony note.
- *  2. **maxChordNotes cap**, by the priority above.
+ *  2. **maxChordNotes cap**, by the priority above — walked greedily so that a candidate which
+ *     would clash with something already kept is skipped in favor of a lower-priority one that
+ *     doesn't, rather than accepted just because there was numeric room left.
  */
 export function placeAndReduce(
   events: RoledChordEvent[],
-  rootPc: number,
+  rootPc: RootPcInput,
   windowStartFor: (timeMs: number) => number,
   maxChordNotes: number
 ): VoicingResult {
   let octaveFolds = 0
   let gridCollisionsMerged = 0
   let voicingReduced = 0
+  let dissonancesAvoided = 0
+
+  const rootPcAt = rootPcLookup(rootPc)
 
   // Tracks the previous event's melody/bass placement so placeDegree can keep motion small
   // across chords and across the window boundary. A window shift is already a legitimate phrase
@@ -146,7 +199,8 @@ export function placeAndReduce(
     }
     lastWindowStart = windowStart
 
-    const degreeOf = (note: RoledNote): number => nearestDiatonicDegree(note.midi, rootPc).globalDegree
+    const rootPcHere = rootPcAt(event.timeMs)
+    const degreeOf = (note: RoledNote): number => nearestDiatonicDegree(note.midi, rootPcHere).globalDegree
 
     const melodyNote = event.notes.find((n) => n.role === 'melody')
     const melodyDegree = melodyNote
@@ -197,18 +251,38 @@ export function placeAndReduce(
       byCell.set(cell, winner)
     }
 
-    // 2. Cap the chord by musical priority.
+    // 2. Cap the chord by musical priority, preferring a non-clashing lower-priority note over a
+    // clashing higher-priority one when both can't fit. Melody and bass are never skipped for
+    // clashing (only capacity can exclude them, same as every other role) — but a third/fifth/
+    // other-inner candidate that would land a single scale step from a note already kept is
+    // passed over in favor of whatever comes next. The result can end up with fewer notes than
+    // maxChordNotes when avoiding dissonance leaves no other choice — a sparser but consonant
+    // chord beats a denser, arbitrarily clashing one.
     const deduped = [...byCell.values()]
     const ranked = [...deduped].sort(
       (a, b) =>
         voicingPriority(a, bassDegreeForPriority) - voicingPriority(b, bassDegreeForPriority) ||
         b.relativeDegree - a.relativeDegree
     )
-    const kept = ranked.slice(0, Math.max(1, maxChordNotes))
-    voicingReduced += deduped.length - kept.length
+    const kept: PlacedNote[] = []
+    let dissonancesAvoidedHere = 0
+    for (const candidate of ranked) {
+      if (kept.length >= Math.max(1, maxChordNotes)) break
+      const isProtected = candidate.role === 'melody' || candidate.role === 'bass'
+      const clashesWithKept = kept.some((k) => isDissonant(k.relativeDegree, candidate.relativeDegree))
+      if (!isProtected && clashesWithKept) {
+        dissonancesAvoidedHere++
+        continue
+      }
+      kept.push(candidate)
+    }
+    dissonancesAvoided += dissonancesAvoidedHere
+    // voicingReduced means "dropped purely for exceeding capacity" — dissonance-driven skips are
+    // tracked separately so the two reasons a note gets cut aren't conflated.
+    voicingReduced += deduped.length - kept.length - dissonancesAvoidedHere
 
     return { timeMs: event.timeMs, notes: kept }
   })
 
-  return { events: placedEvents, octaveFolds, gridCollisionsMerged, voicingReduced }
+  return { events: placedEvents, octaveFolds, gridCollisionsMerged, voicingReduced, dissonancesAvoided }
 }

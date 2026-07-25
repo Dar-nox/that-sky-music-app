@@ -62,6 +62,19 @@ export interface ArrangeOptions {
   accompaniment: AccompanimentMode
   windowMode: WindowMode
   melodyPlacement: MelodyPlacement
+  /**
+   * Detects a sustained, confident key change partway through the song instead of forcing the
+   * whole piece through one globally-chosen key (see dev-exports/findings.md's "Hopes and
+   * Dreams" case). Conservative by design — see keySegment.ts's constants. Defaults off so
+   * existing output is unaffected unless explicitly enabled.
+   */
+  keySegmentation: boolean
+  /**
+   * Experimental: allows the melody window to re-anchor mid-phrase (not just across a silence)
+   * when the local register drifts far enough — see window.ts's `applyResponsiveReanchoring`
+   * doc comment for the trade-off. Defaults off.
+   */
+  responsiveWindowing: boolean
   sourceFileName: string
   title: string
   artist: string
@@ -80,6 +93,9 @@ export interface ArrangementReport {
   gridCollisionsMerged: number
   /** Notes dropped by the maxChordNotes voicing reduction. */
   voicingReduced: number
+  /** Notes dropped specifically to avoid a one-scale-step clash with another kept note, as
+   * opposed to voicingReduced's pure-capacity drops. */
+  dissonancesAvoided: number
   /** Accompaniment notes dropped by the accompaniment mode filter. */
   densityThinned: number
   /** Accompaniment notes dropped for sitting in (or above) the melody's register. */
@@ -91,6 +107,9 @@ export interface ArrangementReport {
   chordEventsTotal: number
   avgNotesPerChord: number
   peakNotesPerSecond: number
+  /** Present only when key segmentation found more than one segment. `key`/`keyFitPercent`
+   * above always mirror segments[0] for backward compatibility; this carries the full list. */
+  keySegments?: { startMs: number; endMs: number; key: string; keyFitPercent: number }[]
 }
 
 export const DEFAULT_ARRANGE_OPTIONS: Pick<
@@ -102,6 +121,8 @@ export const DEFAULT_ARRANGE_OPTIONS: Pick<
   | 'autoKey'
   | 'autoMelodyTrack'
   | 'melodyTrackIndex'
+  | 'keySegmentation'
+  | 'responsiveWindowing'
 > = {
   autoKey: true,
   autoMelodyTrack: true,
@@ -109,5 +130,68 @@ export const DEFAULT_ARRANGE_OPTIONS: Pick<
   maxChordNotes: 4,
   accompaniment: 'full',
   windowMode: 'adaptive',
-  melodyPlacement: 'center'
+  melodyPlacement: 'center',
+  keySegmentation: false,
+  responsiveWindowing: false
+}
+
+// Shared-safe mirrors of the Arranger's internal window/key-segment plan shapes (defined for
+// real in src/main/midi/arrange/window.ts and keySegment.ts), so ArrangerDiagnostics can cross
+// the IPC boundary and be typed in the renderer without pulling main-process-only code into the
+// shared bundle. Structural typing means the main-side types satisfy these without any mapping.
+
+export interface WindowSegmentInfo {
+  startMs: number
+  endMs: number
+  windowStart: number
+  reason?: 'initial' | 'phrase' | 'responsive' | 'key-change'
+}
+
+export interface WindowPlanInfo {
+  segments: WindowSegmentInfo[]
+  windowShifts: number
+}
+
+export interface KeySegmentInfo {
+  startMs: number
+  endMs: number
+  rootPc: number
+  keyName: string
+  fitPercent: number
+}
+
+export interface KeySegmentChunkTraceInfo {
+  startMs: number
+  endMs: number
+  weightMs: number
+  evaluated: boolean
+  activeRootPc: number
+  activeFitPercent: number
+  bestAlternateRootPc: number
+  bestAlternateKeyName: string
+  bestAlternateFitPercent: number
+  candidateStreak: number
+}
+
+export interface KeySegmentPlanInfo {
+  segments: KeySegmentInfo[]
+  keyChanges: number
+  chunkTrace: KeySegmentChunkTraceInfo[]
+}
+
+/**
+ * Internal detail behind an arrangement that isn't part of the production `Song`/
+ * `ArrangementReport` shape — surfaced only through the dev-export tooling, so a song's segment/
+ * key decisions can be read directly from JSON instead of inferred by listening.
+ */
+export interface ArrangerDiagnostics {
+  /** Snapshot of which experimental flags were active, so an exported JSON stays
+   * self-describing even after defaults change later. */
+  options: { keySegmentation: boolean; responsiveWindowing: boolean }
+  /** Full segment list including reason tags — tells the whole re-anchoring story, phrase and
+   * responsive alike. */
+  windowPlan: WindowPlanInfo
+  /** Null when keySegmentation is off; otherwise the full segment list plus the raw per-chunk
+   * scan trace (why every chunk did or didn't move the needle). */
+  keySegmentPlan: KeySegmentPlanInfo | null
 }

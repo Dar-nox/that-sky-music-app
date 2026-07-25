@@ -3,7 +3,7 @@ import type { IpcRendererEvent } from 'electron'
 import { IPC_CHANNELS, type SkyAPI } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ConvertOptions } from '@shared/midi'
-import type { ArrangeOptions } from '@shared/arranger'
+import type { ArrangeOptions, ArrangerDiagnostics } from '@shared/arranger'
 import type { PlaybackEvent } from '@shared/playback'
 import type { Song } from '@shared/song'
 
@@ -19,6 +19,8 @@ const skyAPI: SkyAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.convertMidi, buffer, options),
   arrangeMidi: (buffer: ArrayBuffer, options: ArrangeOptions) =>
     ipcRenderer.invoke(IPC_CHANNELS.arrangeMidi, buffer, options),
+  arrangeMidiDiagnostics: (buffer: ArrayBuffer, options: ArrangeOptions) =>
+    ipcRenderer.invoke(IPC_CHANNELS.arrangeMidiDiagnostics, buffer, options),
   saveSong: (song: Song) => ipcRenderer.invoke(IPC_CHANNELS.saveSong, song),
   loadSong: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.loadSong, id),
   deleteSong: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteSong, id),
@@ -31,6 +33,14 @@ const skyAPI: SkyAPI = {
   playbackSetDryRun: (dryRun: boolean) => ipcRenderer.invoke(IPC_CHANNELS.playbackSetDryRun, dryRun),
   playbackSeek: (timeMs: number) => ipcRenderer.invoke(IPC_CHANNELS.playbackSeek, timeMs),
   playbackPanic: () => ipcRenderer.invoke(IPC_CHANNELS.playbackPanic),
+  devExportRawMidi: (buffer: ArrayBuffer, sourceFileName: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.devExportRawMidi, buffer, sourceFileName),
+  devExportJson: (
+    song: Song,
+    sourceFileName: string,
+    kind: 'arranged' | 'converted',
+    diagnostics?: ArrangerDiagnostics
+  ) => ipcRenderer.invoke(IPC_CHANNELS.devExportJson, song, sourceFileName, kind, diagnostics),
   onPlaybackEvent: (listener: (event: PlaybackEvent) => void) => {
     const handler = (_event: IpcRendererEvent, payload: PlaybackEvent): void => listener(payload)
     ipcRenderer.on(IPC_CHANNELS.playbackEvent, handler)

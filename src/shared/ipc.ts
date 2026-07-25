@@ -1,7 +1,7 @@
 import type { AppSettings } from './settings'
 import type { Song, SongMeta } from './song'
 import type { ConvertOptions, ParsedMidi } from './midi'
-import type { ArrangeOptions } from './arranger'
+import type { ArrangeOptions, ArrangerDiagnostics } from './arranger'
 import type { PlaybackEvent, PlaybackStatus } from './playback'
 
 export const IPC_CHANNELS = {
@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   parseMidi: 'midi:parse',
   convertMidi: 'midi:convert',
   arrangeMidi: 'midi:arrange',
+  arrangeMidiDiagnostics: 'midi:arrangeDiagnostics',
   saveSong: 'song:save',
   loadSong: 'song:load',
   deleteSong: 'song:delete',
@@ -26,7 +27,9 @@ export const IPC_CHANNELS = {
   playbackPanic: 'playback:panic',
   playbackEvent: 'playback:event',
   pickDataFolder: 'settings:pickDataFolder',
-  openDataFolder: 'settings:openDataFolder'
+  openDataFolder: 'settings:openDataFolder',
+  devExportRawMidi: 'dev:exportRawMidi',
+  devExportJson: 'dev:exportJson'
 } as const
 
 export interface SkyAPI {
@@ -42,6 +45,9 @@ export interface SkyAPI {
   convertMidi(buffer: ArrayBuffer, options: ConvertOptions): Promise<Song>
   /** Sky Music Arranger: the musically-optimizing alternative to `convertMidi`. */
   arrangeMidi(buffer: ArrayBuffer, options: ArrangeOptions): Promise<Song>
+  /** Dev-only: re-runs the same arrangement and returns the internal window/key-segment plans
+   * that don't otherwise leave the main process, for dev-export diagnostics. */
+  arrangeMidiDiagnostics(buffer: ArrayBuffer, options: ArrangeOptions): Promise<ArrangerDiagnostics>
   saveSong(song: Song): Promise<string>
   loadSong(id: string): Promise<Song>
   /** Deletes a song's file from the data folder and removes it from the library index. */
@@ -59,4 +65,18 @@ export interface SkyAPI {
   playbackSeek(timeMs: number): Promise<PlaybackStatus>
   playbackPanic(): Promise<PlaybackStatus>
   onPlaybackEvent(listener: (event: PlaybackEvent) => void): () => void
+  /**
+   * Dev-only: writes the full, unaltered MIDI parse (no quantization/grid mapping) to
+   * `dev-exports/<name>.raw.json`, for comparing against a Convert Mode/Arranger output.
+   * Returns the written path.
+   */
+  devExportRawMidi(buffer: ArrayBuffer, sourceFileName: string): Promise<string>
+  /** Dev-only: writes an already-produced Song to `dev-exports/<name>.<kind>.json`. `diagnostics`
+   * (Arranger only) is embedded alongside the Song for inspection. */
+  devExportJson(
+    song: Song,
+    sourceFileName: string,
+    kind: 'arranged' | 'converted',
+    diagnostics?: ArrangerDiagnostics
+  ): Promise<string>
 }

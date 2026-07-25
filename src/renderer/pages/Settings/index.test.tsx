@@ -23,6 +23,7 @@ describe('Settings', () => {
       parseMidi: vi.fn(),
       convertMidi: vi.fn(),
       arrangeMidi: vi.fn(),
+      arrangeMidiDiagnostics: vi.fn(),
       saveSong: vi.fn(),
       loadSong: vi.fn(),
       deleteSong: vi.fn(),
@@ -35,7 +36,9 @@ describe('Settings', () => {
       playbackSetDryRun: vi.fn(),
       playbackSeek: vi.fn(),
       playbackPanic: vi.fn(),
-      onPlaybackEvent: vi.fn().mockReturnValue(() => {})
+      onPlaybackEvent: vi.fn().mockReturnValue(() => {}),
+      devExportRawMidi: vi.fn(),
+      devExportJson: vi.fn()
     }
   })
 
