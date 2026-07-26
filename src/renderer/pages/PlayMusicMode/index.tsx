@@ -67,9 +67,12 @@ const GridPreview = memo(function GridPreview(): React.JSX.Element {
   const activeCells = usePlaybackStore((s) => s.activeCells)
 
   return (
-    <Plate>
+    // `w-fit`: the grid is a fixed 15-cell object, so the panel around it should
+    // be the size of the grid. Left as a block it stretched to the full column
+    // and left a third of a metre of empty canvas to the right of the last cell.
+    <Plate className="w-fit">
       <h3 className="mb-5 font-display text-lg font-medium text-moon-300 italic">Grid</h3>
-      <div className="inline-grid grid-cols-[auto_repeat(5,minmax(0,1fr))] gap-2.5">
+      <div className="grid grid-cols-[auto_repeat(5,minmax(0,1fr))] gap-2.5">
         <span />
         {GRID_COLS.map((col) => (
           <span key={col} className="text-center text-[0.65rem] text-moon-500">

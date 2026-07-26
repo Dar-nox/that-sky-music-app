@@ -213,8 +213,8 @@ export function Settings() {
             </Button>
           }
         >
-          <Plate className="inline-block" padding="sm">
-            <div className="inline-grid grid-cols-5 gap-2.5">
+          <Plate className="w-fit" padding="sm">
+            <div className="grid grid-cols-5 gap-2.5">
               {GRID_ROWS.flatMap((row) =>
                 GRID_COLS.map((col) => {
                   const id = `${row}${col}` as NoteKeyId

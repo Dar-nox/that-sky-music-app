@@ -137,18 +137,25 @@ export function PaintRule({ className }: { className?: string }): React.JSX.Elem
  * A rectangle blocked in by hand: no corner is square and no edge is straight.
  * Drawn in a nominal 400x300 box and stretched to fit.
  *
- * The stroke is *continuous*. An earlier version dashed it, which at real panel
- * sizes stopped reading as a lifted brush and started reading as a rendering
- * fault — broken corners look like a bug, not a gesture. The deviations are
- * also kept small (2-4 units), because `preserveAspectRatio="none"` multiplies
- * them by the panel's aspect ratio and a wide panel exaggerated them into
- * visible kinks.
+ * The path runs right up against the edges of its viewBox, and the gap between
+ * the frame and the panel's own edge comes from a *fixed pixel* inset on the
+ * `<svg>` instead. That is load-bearing. When the gap was baked into the path
+ * — the frame sitting 8 units inside a 400-unit box — `preserveAspectRatio="none"`
+ * turned it into a percentage: on a 730px-wide plate the stroke landed ~15px in,
+ * against 20px of padding, leaving 5px of clearance and reading as if the panel
+ * had no padding at all. Anything that should be a constant distance from the
+ * element's edge has to live in CSS, not in the path data.
+ *
+ * The stroke is also *continuous*. An earlier version dashed it, which at real
+ * panel sizes stopped reading as a lifted brush and started reading as a
+ * rendering fault — broken corners look like a bug, not a gesture. Deviations
+ * stay small (3-5 units) because the stretch multiplies them too.
  */
 const FRAME_PATH =
-  'M 8 10 C 104 7, 216 12, 312 8 C 350 7, 378 9, 392 11 ' +
-  'C 395 98, 389 196, 392 289 ' +
-  'C 300 292, 180 288, 78 291 C 44 292, 20 291, 8 289 ' +
-  'C 5 200, 11 102, 8 10 Z'
+  'M 2 5 C 98 2, 216 7, 312 3 C 350 2, 378 4, 397 6 ' +
+  'C 399 98, 394 197, 397 294 ' +
+  'C 301 297, 179 293, 77 296 C 43 297, 19 296, 2 294 ' +
+  'C 0 201, 5 103, 2 5 Z'
 
 export interface PaintFrameProps {
   /** Any CSS colour; defaults to the cobalt used by `Plate`. */
@@ -168,24 +175,24 @@ export function PaintFrame({
   className
 }: PaintFrameProps): React.JSX.Element {
   return (
-    <svg
-      aria-hidden="true"
-      className={cn('pointer-events-none absolute inset-0 h-full w-full', className)}
-      viewBox="0 0 400 300"
-      preserveAspectRatio="none"
-      role="presentation"
-    >
-      <path
-        d={FRAME_PATH}
-        fill="none"
-        stroke={stroke}
-        strokeOpacity={strokeOpacity}
-        strokeWidth={1.4}
-        strokeLinecap="round"
-        strokeDasharray={broken ? '58 14 96 16 74 12' : undefined}
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
+    // The inset lives on a plain `<div>`, not on the `<svg>`. An `<svg>` is a
+    // replaced element: give it four insets and no explicit size and it resolves
+    // its height from the viewBox's intrinsic ratio rather than stretching, which
+    // left the frame's bottom edge 10px shy of where it belonged. A div stretches.
+    <div aria-hidden="true" className={cn('pointer-events-none absolute inset-[5px]', className)}>
+      <svg className="h-full w-full" viewBox="0 0 400 300" preserveAspectRatio="none" role="presentation">
+        <path
+          d={FRAME_PATH}
+          fill="none"
+          stroke={stroke}
+          strokeOpacity={strokeOpacity}
+          strokeWidth={1.4}
+          strokeLinecap="round"
+          strokeDasharray={broken ? '58 14 96 16 74 12' : undefined}
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    </div>
   )
 }
 
