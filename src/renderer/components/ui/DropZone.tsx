@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent, type ChangeEvent, type ReactNode } from 'react'
 import { cn } from './cn'
 import { Button } from './Button'
+import { PaintFrame } from './paint'
 import { IconUpload } from '../icons'
 
 export interface DropZoneProps {
@@ -68,25 +69,38 @@ export function DropZone({
       onDragLeave={handleDragLeave}
       onDrop={(e) => void handleDrop(e)}
       className={cn(
-        'flex flex-col items-center rounded-card border-2 border-dashed text-center transition-colors',
-        compact ? 'gap-1.5 px-3 py-4' : 'gap-2 px-5 py-7',
-        dragOver
-          ? 'border-star-400/80 bg-star-700/15 text-star-200'
-          : 'border-cobalt-600/35 bg-night-950/35 text-moon-400 hover:border-cobalt-500/55',
+        'relative flex flex-col items-center text-center transition-colors',
+        compact ? 'gap-1.5 px-4 py-5' : 'gap-2.5 px-6 py-9',
+        dragOver ? 'bg-star-700/12 text-star-200' : 'bg-night-950/25 text-moon-400',
         className
       )}
     >
-      <span className={cn('text-star-500/80', dragOver && 'text-star-300')}>
+      {/* Not dashed. A dash pattern stretched across a wide box degenerates into
+          an evenly-spaced CSS-looking dashed border, which is precisely the
+          stock component this design is trying not to be. The words already say
+          it takes a drop; the edge only has to say "this region". */}
+      <PaintFrame
+        stroke={dragOver ? 'var(--color-star-400)' : 'var(--color-cobalt-400)'}
+        strokeOpacity={dragOver ? 0.85 : 0.34}
+      />
+      <span className={cn('relative text-star-600', dragOver && 'text-star-300')}>
         <IconUpload size={compact ? 18 : 24} />
       </span>
-      <p className={cn('font-display font-semibold text-moon-200', compact ? 'text-xs' : 'text-sm')}>{title}</p>
-      {hint && <p className="max-w-sm text-xs leading-relaxed text-moon-400">{hint}</p>}
+      <p
+        className={cn(
+          'relative font-display font-medium text-moon-200 italic',
+          compact ? 'text-sm' : 'text-base'
+        )}
+      >
+        {title}
+      </p>
+      {hint && <p className="relative max-w-[42ch] text-xs leading-relaxed text-moon-400">{hint}</p>}
       <Button
         variant="secondary"
         size={compact ? 'sm' : 'md'}
         loading={busy}
         onClick={() => inputRef.current?.click()}
-        className="mt-1"
+        className="relative mt-1.5"
       >
         {busy ? (busyLabel ?? 'Working…') : buttonLabel}
       </Button>

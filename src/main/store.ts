@@ -38,7 +38,11 @@ function getStore(): Promise<StoreType<StoreSchema>> {
 
 export async function getSettings(): Promise<AppSettings> {
   const store = await getStore()
-  const settings = store.get('settings')
+  // electron-store's `defaults` fill in a *missing* `settings` key, not missing
+  // fields within one that already exists. So an install that predates a newly
+  // added setting would read it back as `undefined` — spread the defaults under
+  // the stored blob to backfill instead.
+  const settings = { ...DEFAULT_SETTINGS, ...store.get('settings') }
 
   // Existing installs persisted the former QWERTY mapping. Update only that
   // exact map, so any future user-defined remapping remains untouched.

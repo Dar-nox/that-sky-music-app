@@ -17,12 +17,12 @@ export function Disclosure({
   className?: string
 }): React.JSX.Element {
   return (
-    <details open={defaultOpen} className={cn('group rounded-tile border border-cobalt-700/25 bg-night-950/40', className)}>
-      <summary className="cursor-pointer list-none px-3 py-2 text-xs font-bold tracking-[0.1em] text-star-500 uppercase select-none marker:content-none hover:text-star-400">
-        <span className="mr-1.5 inline-block transition-transform group-open:rotate-90">›</span>
+    <details open={defaultOpen} className={cn('group hairline-top pt-3', className)}>
+      <summary className="cursor-pointer list-none font-display text-sm font-medium text-star-500 italic select-none marker:content-none hover:text-star-300">
+        <span className="mr-2 inline-block transition-transform group-open:rotate-90">›</span>
         {summary}
       </summary>
-      <div className="space-y-3 border-t border-cobalt-700/20 px-3 py-3">{children}</div>
+      <div className="mt-4 space-y-4 pl-4">{children}</div>
     </details>
   )
 }

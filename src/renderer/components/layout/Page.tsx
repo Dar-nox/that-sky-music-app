@@ -1,12 +1,17 @@
 import type { ReactNode } from 'react'
 import { cn } from '../ui/cn'
-import { SectionHeading } from '../ui/Card'
+import { SectionHeading } from '../ui/Heading'
+import { PaintRule } from '../ui/paint'
 
 /**
- * Sticky page title bar. Together with the sidebar these are the only two
- * `backdrop-filter` surfaces in the app — blurring over the animated filtered
- * SVG is the one thing that would cost real frame rate, so it is deliberately
- * capped at two.
+ * The page title, set as a plate title: large, in the display face, with room
+ * around it and a brush rule underneath.
+ *
+ * It does not stick to the top of the scroll container any more. A sticky bar
+ * over a painted backdrop needed a blurred or opaque background to stay legible
+ * — the blur was one of the app's three per-frame `backdrop-filter` surfaces,
+ * and an opaque bar would slice the painting in half. Letting the title scroll
+ * away costs nothing: the masthead above it is what you navigate with.
  */
 export function PageHeader({
   title,
@@ -18,10 +23,9 @@ export function PageHeader({
   actions?: ReactNode
 }): React.JSX.Element {
   return (
-    <div className="sticky top-0 z-20 border-b border-cobalt-700/25 bg-night-950/60 px-6 py-4 backdrop-blur-md">
-      <div className="mx-auto w-full max-w-4xl">
-        <SectionHeading level={1} title={title} description={description} actions={actions} />
-      </div>
+    <div className="mx-auto w-full max-w-5xl px-7 pt-11 pb-1">
+      <SectionHeading level={1} title={title} description={description} actions={actions} />
+      <PaintRule className="mt-8" />
     </div>
   )
 }
@@ -33,5 +37,5 @@ export function PageContainer({
   children: ReactNode
   className?: string
 }): React.JSX.Element {
-  return <div className={cn('mx-auto w-full max-w-4xl space-y-5 px-6 pt-5 pb-16', className)}>{children}</div>
+  return <div className={cn('mx-auto w-full max-w-5xl px-7 pt-10 pb-24', className)}>{children}</div>
 }

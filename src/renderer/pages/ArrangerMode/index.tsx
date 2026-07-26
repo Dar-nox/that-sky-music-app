@@ -13,16 +13,15 @@ import { DEFAULT_SETTINGS } from '@shared/settings'
 import { MidiWorkbench, OptionGroup, TrackList } from '../../components/midi/MidiWorkbench'
 import {
   Alert,
-  Badge,
+  Annotation,
   Button,
   Callout,
   Checkbox,
   Disclosure,
   Field,
+  Figure,
   NumberInput,
-  SectionHeading,
   Select,
-  StatTile,
   TextInput
 } from '../../components/ui'
 import { IconSave, IconStar } from '../../components/icons'
@@ -33,6 +32,23 @@ function normalizeToMajorKeyName(key: string): string {
   } catch {
     return 'C'
   }
+}
+
+/**
+ * A labelled group of figures inside the report.
+ *
+ * A subhead over a hairline, not a heading over a grid of bordered tiles. The
+ * Arranger's report is eleven numbers; boxing each one turned reading it into
+ * scanning a dashboard, when what you actually want is to run your eye down the
+ * list and notice the one that isn't zero.
+ */
+function ReportBlock({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <div className="hairline-top pt-6">
+      <h3 className="mb-6 font-display text-lg font-medium text-moon-300 italic">{title}</h3>
+      {children}
+    </div>
+  )
 }
 
 function formatMmSs(ms: number): string {
@@ -230,8 +246,8 @@ export function ArrangerMode() {
       fileBadges={
         parsed ? (
           <>
-            <Badge>{parsed.tracks.length} tracks</Badge>
-            <Badge tone="gold">{autoKey ? 'Auto key' : `${key} Major`}</Badge>
+            <Annotation>{parsed.tracks.length} tracks</Annotation>
+            <Annotation tone="gold">{autoKey ? 'Auto key' : `${key} Major`}</Annotation>
           </>
         ) : undefined
       }
@@ -245,7 +261,7 @@ export function ArrangerMode() {
       onAction={() => void handleArrange()}
       optionsSlot={
         parsed && (
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid gap-x-14 gap-y-10 xl:grid-cols-2">
             <OptionGroup label="Tracks & melody">
               <Field label="Tracks to arrange">
                 <TrackList>
@@ -255,9 +271,9 @@ export function ArrangerMode() {
                       checked={selectedTrackIndices.includes(t.index)}
                       onCheckedChange={() => toggleTrack(t.index)}
                       label={
-                        <span className="flex flex-wrap items-center gap-2">
+                        <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                           <span className="min-w-0 truncate">{t.name}</span>
-                          <Badge>{t.noteCount} notes</Badge>
+                          <Annotation>{t.noteCount} notes</Annotation>
                         </span>
                       }
                     />
@@ -312,7 +328,7 @@ export function ArrangerMode() {
                 </div>
               </Field>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <Field label="Title">
                   <TextInput value={title} onChange={(e) => setTitle(e.target.value)} />
                 </Field>
@@ -431,29 +447,28 @@ export function ArrangerMode() {
       }
       reportSlot={
         song && report ? (
-          <div className="space-y-5">
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-              <div>
-                <div className="text-[10px] font-bold tracking-[0.1em] text-moon-500 uppercase">
-                  Melody track
-                </div>
-                <div className="font-display text-lg font-semibold text-moon-50">
+          <div className="space-y-9">
+            {/* What the arranger decided, before what it counted. */}
+            <div className="flex flex-wrap gap-x-14 gap-y-6">
+              <div className="min-w-0">
+                <div className="font-display text-2xl leading-tight font-medium text-moon-50 italic">
                   {report.melodyTrackIndex === null
                     ? 'None (pitch only)'
                     : (parsed?.tracks.find((t) => t.index === report.melodyTrackIndex)?.name ??
                       `Track ${report.melodyTrackIndex + 1}`)}
                 </div>
+                <div className="mt-1.5 text-[0.8rem] text-moon-400">melody track</div>
               </div>
-              <div>
-                <div className="text-[10px] font-bold tracking-[0.1em] text-moon-500 uppercase">Key</div>
-                <div className="flex items-center gap-2">
-                  <span className="font-display text-lg font-semibold text-moon-50">
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-3">
+                  <span className="font-display text-2xl leading-tight font-medium text-moon-50 italic">
                     {report.key} Major
                   </span>
-                  <Badge tone={report.keyFitPercent < 80 ? 'warn' : 'good'}>
+                  <Annotation tone={report.keyFitPercent < 80 ? 'warn' : 'good'}>
                     {report.keyFitPercent}% fit
-                  </Badge>
+                  </Annotation>
                 </div>
+                <div className="mt-1.5 text-[0.8rem] text-moon-400">key</div>
               </div>
             </div>
 
@@ -465,58 +480,54 @@ export function ArrangerMode() {
             )}
 
             {report.keySegments && report.keySegments.length > 1 && (
-              <div>
-                <SectionHeading level={3} title="Detected key changes" />
-                <ul className="mt-2 space-y-1.5">
+              <ReportBlock title="Detected key changes">
+                <ul className="space-y-2.5">
                   {report.keySegments.map((segment, i) => (
-                    <li
-                      key={i}
-                      className="paint-inset flex flex-wrap items-center gap-2 rounded-tile px-3 py-1.5 text-xs"
-                    >
-                      <span className="font-mono text-moon-400">
+                    <li key={i} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+                      <span className="font-mono text-xs text-moon-500">
                         {formatMmSs(segment.startMs)}–{formatMmSs(segment.endMs)}
                       </span>
-                      <span className="font-semibold text-moon-100">{segment.key} Major</span>
-                      <Badge tone={segment.keyFitPercent < 80 ? 'warn' : 'neutral'}>
+                      <span className="font-display font-medium text-moon-100 italic">
+                        {segment.key} Major
+                      </span>
+                      <Annotation tone={segment.keyFitPercent < 80 ? 'warn' : 'neutral'}>
                         {segment.keyFitPercent}% fit
-                      </Badge>
+                      </Annotation>
                     </li>
                   ))}
                 </ul>
-              </div>
+              </ReportBlock>
             )}
 
-            <div>
-              <SectionHeading level={3} title="Volume" />
-              <div className="mt-2 grid grid-cols-2 gap-2.5 md:grid-cols-3">
-                <StatTile label="Notes in" value={report.notesIn} />
-                <StatTile label="Notes out" value={report.notesOut} />
-                <StatTile label="Chord events" value={report.chordEventsTotal} />
-                <StatTile label="Avg notes/chord" value={report.avgNotesPerChord} />
-                <StatTile label="Peak notes/sec" value={report.peakNotesPerSecond} />
+            <ReportBlock title="Volume">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-7 sm:grid-cols-3 lg:grid-cols-5">
+                <Figure label="Notes in" value={report.notesIn} />
+                <Figure label="Notes out" value={report.notesOut} />
+                <Figure label="Chord events" value={report.chordEventsTotal} />
+                <Figure label="Avg notes/chord" value={report.avgNotesPerChord} />
+                <Figure label="Peak notes/sec" value={report.peakNotesPerSecond} />
               </div>
-            </div>
+            </ReportBlock>
 
-            <div>
-              <SectionHeading level={3} title="Adjustments" />
-              <div className="mt-2 grid grid-cols-2 gap-2.5 md:grid-cols-3">
-                <StatTile label="Octave folds" value={report.octaveFolds} />
-                <StatTile label="Range shifts" value={report.windowShifts} />
-                <StatTile label="Doublings merged" value={report.gridCollisionsMerged} />
-                <StatTile label="Voicing-reduced" value={report.voicingReduced} />
+            <ReportBlock title="Adjustments">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-7 sm:grid-cols-3 lg:grid-cols-4">
+                <Figure label="Octave folds" value={report.octaveFolds} />
+                <Figure label="Range shifts" value={report.windowShifts} />
+                <Figure label="Doublings merged" value={report.gridCollisionsMerged} />
+                <Figure label="Voicing-reduced" value={report.voicingReduced} />
                 {/* Arrangements saved before the clash-handling setting existed carry only the
-                    combined total, so fall back to one tile rather than showing two blanks. */}
+                    combined total, so fall back to one figure rather than showing two blanks. */}
                 {report.dissonancesAvoidedInChord === undefined ||
                 report.dissonancesAvoidedOverlap === undefined ? (
-                  <StatTile label="Dissonances avoided" value={report.dissonancesAvoided} />
+                  <Figure label="Dissonances avoided" value={report.dissonancesAvoided} />
                 ) : (
                   <>
-                    <StatTile
+                    <Figure
                       label="Clash — in chord"
                       value={report.dissonancesAvoidedInChord}
                       sub="resolved while capping"
                     />
-                    <StatTile
+                    <Figure
                       label="Clash — overlap"
                       value={report.dissonancesAvoidedOverlap}
                       tone={report.dissonancesAvoidedOverlap > 0 ? 'warn' : 'neutral'}
@@ -524,17 +535,17 @@ export function ArrangerMode() {
                     />
                   </>
                 )}
-                <StatTile label="Accomp. removed by mode" value={report.densityThinned} />
-                <StatTile label="Register-suppressed" value={report.registerSuppressed} />
+                <Figure label="Accomp. removed by mode" value={report.densityThinned} />
+                <Figure label="Register-suppressed" value={report.registerSuppressed} />
               </div>
-            </div>
+            </ReportBlock>
 
             <Callout icon={<IconStar size={14} />}>
               Tip: load this in Play Music Mode with dry-run enabled to preview the note stream
               before sending real keystrokes to the game.
             </Callout>
 
-            <div className="flex flex-wrap gap-2 border-t border-cobalt-700/25 pt-4">
+            <div className="flex flex-wrap items-center gap-7 pt-1">
               <Button
                 variant="success"
                 icon={<IconSave size={15} />}

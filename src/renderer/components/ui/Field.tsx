@@ -1,8 +1,4 @@
-import type {
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes
-} from 'react'
+import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
 import { cn } from './cn'
 
 /* ---------------------------------------------------------------------------
@@ -35,32 +31,32 @@ export function Field({
 }: FieldProps): React.JSX.Element {
   const body = (
     <>
-      <span className="block text-sm font-semibold text-moon-200">{label}</span>
-      {hint && <span className="mt-0.5 block text-xs leading-relaxed text-moon-400">{hint}</span>}
-      <span className="mt-1.5 block">{children}</span>
+      <span className="smallcaps block text-[0.82rem] text-moon-200">{label}</span>
+      {hint && <span className="mt-1 block max-w-[60ch] text-xs leading-relaxed text-moon-400">{hint}</span>}
+      <span className="mt-2 block">{children}</span>
       {error && <span className="mt-1 block text-xs text-vermilion-400">{error}</span>}
     </>
   )
 
   if (wrap) return <label className={cn('block', className)}>{body}</label>
-  return (
-    <div className={cn('block', className)}>
-      {htmlFor ? <label htmlFor={htmlFor}>{body}</label> : body}
-    </div>
-  )
+  return <div className={cn('block', className)}>{htmlFor ? <label htmlFor={htmlFor}>{body}</label> : body}</div>
 }
 
 /* ---------------------------------------------------------------------------
  * Controls. These stay native elements throughout — rebuilding a range input or
  * a checkbox would risk the behaviour the app depends on (seek commit on
  * mouseup/keyup, drag-and-drop, accent colours). Styling only.
+ *
+ * Inputs are ruled, not boxed: a single line under the value, the way a form is
+ * ruled on paper. A page of bordered, rounded, inset-shadowed input boxes was a
+ * large part of what made the old UI read as generated, and the box was never
+ * carrying any information the rule doesn't.
  * ------------------------------------------------------------------------ */
 
 const CONTROL_BASE =
-  'w-full rounded-tile border border-cobalt-700/35 bg-night-950/70 px-2.5 py-1.5 text-sm text-moon-100 ' +
-  'shadow-[inset_0_1px_4px_rgb(0_0_0/.35)] transition-colors ' +
-  'placeholder:text-moon-500 hover:border-cobalt-600/55 focus:border-star-500/70 focus:outline-none ' +
-  'disabled:opacity-50'
+  'w-full border-0 border-b border-cobalt-600/40 bg-night-950/35 px-1.5 py-1.5 text-sm text-moon-100 ' +
+  'transition-colors placeholder:text-moon-500 hover:border-cobalt-400/60 ' +
+  'focus:border-star-400 focus:outline-none disabled:opacity-50'
 
 export function TextInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>): React.JSX.Element {
   return <input type="text" className={cn(CONTROL_BASE, className)} {...rest} />
@@ -76,11 +72,7 @@ export function NumberInput({
   return <input type="number" className={cn(CONTROL_BASE, NUMBER_WIDTHS[width], className)} {...rest} />
 }
 
-export function Select({
-  className,
-  children,
-  ...rest
-}: SelectHTMLAttributes<HTMLSelectElement>): React.JSX.Element {
+export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>): React.JSX.Element {
   return (
     <select className={cn(CONTROL_BASE, 'cursor-pointer appearance-none pr-8', className)} {...rest}>
       {children}
@@ -122,7 +114,7 @@ export function Checkbox({
       />
       <span className="min-w-0">
         <span className="block leading-snug">{label}</span>
-        {hint && <span className="mt-0.5 block text-xs leading-relaxed text-moon-400">{hint}</span>}
+        {hint && <span className="mt-1 block max-w-[60ch] text-xs leading-relaxed text-moon-400">{hint}</span>}
       </span>
     </label>
   )
@@ -136,7 +128,11 @@ export interface RadioGroupProps<T extends string> {
   className?: string
 }
 
-/** Segmented pill, but still real radio inputs underneath. */
+/**
+ * Choices set as words, with a brush stroke under the one in force. Still real
+ * radio inputs underneath — only the segmented pill (and its gold fill and drop
+ * shadow) is gone.
+ */
 export function RadioGroup<T extends string>({
   value,
   onChange,
@@ -145,7 +141,7 @@ export function RadioGroup<T extends string>({
   className
 }: RadioGroupProps<T>): React.JSX.Element {
   return (
-    <div className={cn('inline-flex flex-wrap gap-1 rounded-card bg-night-950/60 p-1', className)}>
+    <div className={cn('inline-flex flex-wrap items-baseline gap-x-6 gap-y-2', className)}>
       {options.map((option) => {
         const active = option.value === value
         return (
@@ -153,10 +149,8 @@ export function RadioGroup<T extends string>({
             key={option.value}
             title={option.hint}
             className={cn(
-              'cursor-pointer rounded-tile px-3 py-1.5 text-sm font-semibold transition-colors',
-              active
-                ? 'bg-star-500 text-night-950 shadow-[0_4px_12px_-6px_rgb(232_178_58/.9)]'
-                : 'text-moon-300 hover:bg-night-800/70 hover:text-moon-100'
+              'cursor-pointer text-sm font-semibold transition-colors',
+              active ? 'brush-underline text-star-200' : 'text-moon-400 hover:text-moon-100'
             )}
           >
             <input
@@ -179,6 +173,9 @@ export function RadioGroup<T extends string>({
  * arbitrary variants are enough — and crucially every native handler the caller
  * passes (onChange / onMouseUp / onTouchEnd / onKeyUp) is forwarded untouched,
  * because PlayMusicMode's seek-commit behaviour depends on all four.
+ *
+ * The thumb keeps its glow: it is the one control in the app that genuinely is
+ * a star.
  */
 export function Slider({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>): React.JSX.Element {
   return (
@@ -186,9 +183,8 @@ export function Slider({ className, ...rest }: InputHTMLAttributes<HTMLInputElem
       type="range"
       className={cn(
         'h-4 cursor-pointer appearance-none bg-transparent',
-        '[&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-pill',
-        '[&::-webkit-slider-runnable-track]:bg-night-950/80 [&::-webkit-slider-runnable-track]:shadow-[inset_0_1px_3px_rgb(0_0_0/.5)]',
-        '[&::-webkit-slider-thumb]:mt-[-5px] [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4',
+        '[&::-webkit-slider-runnable-track]:h-px [&::-webkit-slider-runnable-track]:bg-cobalt-600/60',
+        '[&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5',
         '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-pill',
         '[&::-webkit-slider-thumb]:bg-star-300 [&::-webkit-slider-thumb]:shadow-star',
         '[&::-webkit-slider-thumb]:transition-transform hover:[&::-webkit-slider-thumb]:scale-110',

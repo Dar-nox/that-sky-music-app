@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react'
 import type { GridCol, GridRow } from '@shared/song'
 import { DEFAULT_NOTE_KEYS, DEFAULT_TRANSPORT_HOTKEYS, type NoteKeyId, type TransportAction } from '@shared/keybinds'
-import { DEFAULT_SETTINGS, type AppSettings } from '@shared/settings'
+import { DEFAULT_SETTINGS, type AppSettings, type BackgroundQuality } from '@shared/settings'
 import { captureKeyName } from './keyCapture'
 import { PageContainer, PageHeader } from '../../components/layout/Page'
-import { Alert, Button, Card, Callout, Field, KeyCap, NumberInput, SectionHeading, TextInput } from '../../components/ui'
+import { useAppearanceStore } from '../../store/appearanceStore'
+import {
+  Alert,
+  Button,
+  Callout,
+  Field,
+  KeyCap,
+  Movement,
+  NumberInput,
+  Plate,
+  RadioGroup,
+  TextInput
+} from '../../components/ui'
 import { IconFolder, IconFolderOpen, IconStar } from '../../components/icons'
 
 const GRID_ROWS: GridRow[] = ['A', 'B', 'C']
@@ -15,6 +27,20 @@ const TRANSPORT_ACTIONS: { id: TransportAction; label: string }[] = [
   { id: 'next', label: 'Next song' },
   { id: 'previous', label: 'Previous song' },
   { id: 'panic', label: 'Panic stop' }
+]
+
+const BACKGROUND_OPTIONS: { value: BackgroundQuality; label: string; hint: string }[] = [
+  {
+    value: 'painting',
+    label: 'Painting',
+    hint: 'The sky drifts and the stars twinkle. The painting is rasterized once at startup and the moving layers just show that image, so this measures the same 60fps as the other two — it only costs a little more graphics memory.'
+  },
+  {
+    value: 'still',
+    label: 'Still',
+    hint: 'The whole painting, holding completely still. Costs nothing after the first frame.'
+  },
+  { value: 'plain', label: 'Plain wash', hint: 'The colour gradient alone, with no painting at all.' }
 ]
 
 type Listening = { kind: 'note'; id: NoteKeyId } | { kind: 'hotkey'; action: TransportAction } | null
@@ -130,6 +156,13 @@ export function Settings() {
     void persist({ ...settings, transportHotkeys: DEFAULT_TRANSPORT_HOTKEYS })
   }
 
+  /** Kept in the store as well as on disk, so the backdrop changes as you pick
+   *  rather than on the next launch. */
+  function setBackgroundQuality(quality: BackgroundQuality): void {
+    useAppearanceStore.getState().setBackgroundQuality(quality)
+    void persist({ ...settings, backgroundQuality: quality })
+  }
+
   async function handlePickFolder(): Promise<void> {
     try {
       const picked = await window.skyAPI.pickDataFolder()
@@ -154,9 +187,7 @@ export function Settings() {
       <>
         <PageHeader title="Settings" />
         <PageContainer>
-          <Card>
-            <p className="text-sm text-moon-400">Loading…</p>
-          </Card>
+          <p className="text-sm text-moon-400">Loading…</p>
         </PageContainer>
       </>
     )
@@ -164,31 +195,26 @@ export function Settings() {
 
   return (
     <>
-      <PageHeader
-        title="Settings"
-        description="Remap note keys and transport hotkeys. Changes save automatically."
-      />
+      <PageHeader title="Settings" description="Remap note keys and transport hotkeys. Changes save automatically." />
 
       <PageContainer>
-        {error && <Alert tone="error">{error}</Alert>}
+        {error && <Alert tone="error" className="mb-8">{error}</Alert>}
         {/* Single unsplit text node — Settings' test matches /already bound to cell A1/. */}
-        {warning && <Alert tone="warning">{warning}</Alert>}
+        {warning && <Alert tone="warning" className="mb-8">{warning}</Alert>}
 
         {/* Note keys. This section must stay FIRST: the test resolves the
             note-key reset via getAllByText('Reset to default')[0]. */}
-        <div className="grid gap-5 xl:grid-cols-[auto_1fr]">
-          <Card>
-            <SectionHeading
-              level={3}
-              eyebrow="The 15-key grid"
-              title="Note keys"
-              actions={
-                <Button size="sm" onClick={resetNoteKeys}>
-                  Reset to default
-                </Button>
-              }
-            />
-            <div className="paint-inset mt-4 inline-grid grid-cols-5 gap-2 rounded-card p-3">
+        <Movement
+          title="Note keys"
+          description="The 15-key grid, as your game binds it. Click a cell, then press the key you want on it."
+          actions={
+            <Button size="sm" onClick={resetNoteKeys}>
+              Reset to default
+            </Button>
+          }
+        >
+          <Plate className="inline-block" padding="sm">
+            <div className="inline-grid grid-cols-5 gap-2.5">
               {GRID_ROWS.flatMap((row) =>
                 GRID_COLS.map((col) => {
                   const id = `${row}${col}` as NoteKeyId
@@ -206,51 +232,50 @@ export function Settings() {
                 })
               )}
             </div>
-          </Card>
+          </Plate>
+        </Movement>
 
-          <Card>
-            <SectionHeading
-              level={3}
-              eyebrow="Global"
-              title="Transport hotkeys"
-              actions={
-                <Button size="sm" onClick={resetHotkeys}>
-                  Reset to default
-                </Button>
-              }
-            />
-            <Callout className="mt-3" icon={<IconStar size={14} />}>
-              These work globally, even while the app window is minimized during playback.
-            </Callout>
-            <div className="mt-3 space-y-2">
-              {TRANSPORT_ACTIONS.map(({ id, label }) => {
-                const isListening = listening?.kind === 'hotkey' && listening.action === id
-                return (
-                  <div
-                    key={id}
-                    className="paint-inset flex items-center justify-between gap-3 rounded-tile px-3 py-2"
+        <Movement
+          title="Transport hotkeys"
+          actions={
+            <Button size="sm" onClick={resetHotkeys}>
+              Reset to default
+            </Button>
+          }
+        >
+          <div className="max-w-lg">
+            {TRANSPORT_ACTIONS.map(({ id, label }, i) => {
+              const isListening = listening?.kind === 'hotkey' && listening.action === id
+              return (
+                <div
+                  key={id}
+                  // The rule goes *between* rows. Applied conditionally rather
+                  // than as `first:border-t-0`, which would depend on which of
+                  // two same-specificity utilities Tailwind happened to emit last.
+                  className={`flex items-center justify-between gap-6 py-3 ${i > 0 ? 'hairline-top' : ''}`}
+                >
+                  <span className="text-sm text-moon-200">{label}</span>
+                  <button
+                    onClick={() => startListeningHotkey(id)}
+                    className={`min-w-28 rounded-tile px-3 py-1.5 font-display text-sm font-semibold transition-colors ${
+                      isListening
+                        ? 'animate-pulse bg-star-400 text-night-950'
+                        : 'bg-night-900/70 text-moon-200 shadow-cell ring-1 ring-cobalt-700/35 hover:bg-night-800/80'
+                    }`}
                   >
-                    <span className="font-display text-sm font-semibold text-moon-200">{label}</span>
-                    <button
-                      onClick={() => startListeningHotkey(id)}
-                      className={`min-w-24 rounded-tile px-3 py-1.5 text-sm font-semibold transition-colors ${
-                        isListening
-                          ? 'animate-pulse bg-star-500 text-night-950 ring-2 ring-star-200'
-                          : 'bg-night-800/85 text-moon-200 shadow-cell ring-1 ring-cobalt-700/40 hover:bg-night-700/85'
-                      }`}
-                    >
-                      {isListening ? 'Press a key…' : settings.transportHotkeys[id]}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </Card>
-        </div>
+                    {isListening ? 'Press a key…' : settings.transportHotkeys[id]}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+          <Callout className="mt-6" icon={<IconStar size={14} />}>
+            These work globally, even while the app window is minimized during playback.
+          </Callout>
+        </Movement>
 
-        <Card>
-          <SectionHeading level={3} eyebrow="Timing" title="Playback tuning" />
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <Movement title="Playback tuning">
+          <div className="grid max-w-3xl gap-x-12 gap-y-8 sm:grid-cols-2">
             <Field
               wrap
               label="Sustain threshold (ms)"
@@ -298,14 +323,30 @@ export function Settings() {
               />
             </Field>
           </div>
-        </Card>
+        </Movement>
 
-        <Card>
-          <SectionHeading level={3} eyebrow="Library" title="Data folder" />
-          <p className="paint-inset mt-3 truncate rounded-tile px-3 py-2 font-mono text-xs text-moon-300">
+        <Movement title="Appearance">
+          <Field
+            label="Background"
+            hint="Turn this down if the window feels sluggish — on an older laptop the moving painting is the most expensive thing the app draws."
+          >
+            <RadioGroup
+              name="background-quality"
+              value={settings.backgroundQuality}
+              onChange={setBackgroundQuality}
+              options={BACKGROUND_OPTIONS}
+            />
+          </Field>
+          <p className="mt-4 max-w-[62ch] text-xs leading-relaxed text-moon-500">
+            {BACKGROUND_OPTIONS.find((o) => o.value === settings.backgroundQuality)?.hint}
+          </p>
+        </Movement>
+
+        <Movement title="Data folder" rule={false}>
+          <p className="max-w-3xl truncate font-mono text-xs text-moon-400">
             {settings.dataFolder ?? 'Using the default location (app data folder / songs).'}
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-5 flex flex-wrap items-center gap-7">
             <Button icon={<IconFolder size={15} />} onClick={() => void handlePickFolder()}>
               Choose folder…
             </Button>
@@ -313,13 +354,15 @@ export function Settings() {
               Open folder
             </Button>
           </div>
-        </Card>
+        </Movement>
       </PageContainer>
 
-      {/* Floating capture prompt, so it stays visible wherever you scrolled to. */}
+      {/* Floating capture prompt, so it stays visible wherever you scrolled to.
+          Opaque rather than blurred: a `backdrop-filter` here would re-blur its
+          region every frame the backdrop moves. */}
       {listening && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-30 flex justify-center px-6">
-          <div className="paint-panel pointer-events-auto flex items-center gap-3 rounded-card px-4 py-2.5 backdrop-blur-md">
+        <div className="pointer-events-none fixed inset-x-0 bottom-8 z-30 flex justify-center px-6">
+          <div className="paint-plate pointer-events-auto relative flex items-center gap-4 bg-night-900/95 px-6 py-3">
             <span className="animate-halo-breathe text-star-400">
               <IconStar size={18} />
             </span>

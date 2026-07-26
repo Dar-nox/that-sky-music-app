@@ -13,15 +13,15 @@ import { DEFAULT_SETTINGS } from '@shared/settings'
 import { MidiWorkbench, OptionGroup, TrackList } from '../../components/midi/MidiWorkbench'
 import {
   Alert,
-  Badge,
+  Annotation,
   Button,
   Checkbox,
   Field,
+  Figure,
   NumberInput,
+  PaintedBar,
   RadioGroup,
-  SegmentedProgress,
   Select,
-  StatTile,
   TextInput
 } from '../../components/ui'
 import { IconSave } from '../../components/icons'
@@ -183,8 +183,8 @@ export function ConvertMode() {
       fileBadges={
         parsed ? (
           <>
-            <Badge>{parsed.tracks.length} tracks</Badge>
-            <Badge tone="gold">{key} Major</Badge>
+            <Annotation>{parsed.tracks.length} tracks</Annotation>
+            <Annotation tone="gold">{key} Major</Annotation>
           </>
         ) : undefined
       }
@@ -198,7 +198,7 @@ export function ConvertMode() {
       onAction={() => void handleConvert()}
       optionsSlot={
         parsed && (
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid gap-x-14 gap-y-10 xl:grid-cols-2">
             <OptionGroup label="Notes">
               <Field
                 label="Tracks to convert"
@@ -213,10 +213,12 @@ export function ConvertMode() {
                       checked={selectedTrackIndices.includes(t.index)}
                       onCheckedChange={() => toggleTrack(t.index)}
                       label={
-                        <span className="flex flex-wrap items-center gap-2">
+                        <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                           <span className="min-w-0 truncate">{t.name}</span>
-                          <Badge>{t.noteCount} notes</Badge>
-                          {t.index === parsed.suggestedTrackIndex && <Badge tone="gold">suggested</Badge>}
+                          <Annotation>{t.noteCount} notes</Annotation>
+                          {t.index === parsed.suggestedTrackIndex && (
+                            <Annotation tone="gold">suggested</Annotation>
+                          )}
                         </span>
                       }
                     />
@@ -298,7 +300,7 @@ export function ConvertMode() {
                 </label>
               )}
 
-              <div className="grid grid-cols-2 gap-4 pt-1">
+              <div className="grid grid-cols-2 gap-6 pt-1">
                 <Field label="Title">
                   <TextInput value={title} onChange={(e) => setTitle(e.target.value)} />
                 </Field>
@@ -312,41 +314,49 @@ export function ConvertMode() {
       }
       reportSlot={
         song && report ? (
-          <div className="space-y-5">
-            <SegmentedProgress
-              segments={[
-                { label: `Unaltered ${pct(report.notesUnaltered)}`, value: report.notesUnaltered, tone: 'gold' },
-                {
-                  label: `Octave-shifted ${pct(report.notesOctaveShifted)}`,
-                  value: report.notesOctaveShifted,
-                  tone: 'neutral'
-                },
-                { label: `Dropped ${pct(report.notesDropped)}`, value: report.notesDropped, tone: 'bad' }
-              ]}
-            />
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <StatTile
-                label="Unaltered"
-                tone="gold"
-                value={pct(report.notesUnaltered)}
-                sub={`${report.notesUnaltered} notes`}
-              />
-              <StatTile
-                label="Octave-shifted"
-                value={pct(report.notesOctaveShifted)}
-                sub={`${report.notesOctaveShifted} notes`}
-              />
-              <StatTile
-                label="Dropped"
-                tone={report.notesDropped > 0 ? 'bad' : 'neutral'}
-                value={pct(report.notesDropped)}
-                sub={`${report.notesDropped} notes`}
-              />
-              <StatTile label="Total" value={report.notesTotal} sub="notes in sheet" />
+          <div className="space-y-9">
+            {/* The headline number leads; the proportions sit beside it. Four
+                equal bordered tiles gave a total the same weight as a rounding
+                error, which is not how you read a conversion. */}
+            <div className="flex flex-wrap items-end gap-x-14 gap-y-7">
+              <div className="shrink-0">
+                <div className="font-display text-6xl leading-none font-semibold text-moon-50">
+                  {report.notesTotal}
+                </div>
+                <div className="mt-2.5 text-sm text-moon-400">notes in the sheet</div>
+              </div>
+              <div className="min-w-[16rem] flex-1">
+                <PaintedBar
+                  segments={[
+                    { label: 'Unaltered', value: report.notesUnaltered, tone: 'gold' },
+                    { label: 'Octave-shifted', value: report.notesOctaveShifted, tone: 'neutral' },
+                    { label: 'Dropped', value: report.notesDropped, tone: 'bad' }
+                  ]}
+                />
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 border-t border-cobalt-700/25 pt-4">
+            <div className="hairline-top grid grid-cols-3 gap-8 pt-7">
+              <Figure
+                tone="gold"
+                value={pct(report.notesUnaltered)}
+                label="Unaltered"
+                sub={`${report.notesUnaltered} notes`}
+              />
+              <Figure
+                value={pct(report.notesOctaveShifted)}
+                label="Octave-shifted"
+                sub={`${report.notesOctaveShifted} notes`}
+              />
+              <Figure
+                tone={report.notesDropped > 0 ? 'bad' : 'neutral'}
+                value={pct(report.notesDropped)}
+                label="Dropped"
+                sub={`${report.notesDropped} notes`}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-7 pt-1">
               <Button
                 variant="success"
                 icon={<IconSave size={15} />}

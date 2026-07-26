@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { PageContainer, PageHeader } from '../layout/Page'
-import { Alert, Badge, Button, Card, DropZone, SectionHeading, cn } from '../ui'
+import { Alert, Annotation, Button, DropZone, Movement, cn } from '../ui'
 import { IconMusic } from '../icons'
 
 /**
@@ -11,12 +11,17 @@ import { IconMusic } from '../icons'
  * `useState`, every handler and every IPC call it already had, and passes its
  * own (entirely different) option controls and report body in as slots. Only
  * the surrounding layout is shared.
+ *
+ * The three stages used to be three numbered `<Card>`s. They are now three
+ * `Movement`s: the same sequence, but running on the canvas with the numeral in
+ * the gutter, so a two-step page doesn't look like a dashboard of three
+ * unrelated widgets.
  */
 export interface MidiWorkbenchProps {
   title: string
   intro: ReactNode
   fileName: string | null
-  /** Chips shown beside the file name once a file is parsed (track count, key…). */
+  /** Annotations shown beside the file name once a file is parsed (track count, key…). */
   fileBadges?: ReactNode
   onFiles: (files: File[]) => void | Promise<void>
   error: string | null
@@ -54,18 +59,17 @@ export function MidiWorkbench({
       <PageHeader title={title} description={intro} />
 
       <PageContainer>
-        {/* Step 1 — source file */}
-        <Step index={1} label="Choose a MIDI file">
+        <Movement index={1} title="Source">
           {hasFile ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-star-500">
-                <IconMusic size={18} />
+            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+              <span className="translate-y-0.5 text-star-600">
+                <IconMusic size={17} />
               </span>
-              <span className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-moon-100">
+              <span className="min-w-0 flex-1 truncate font-display text-lg font-medium text-moon-50">
                 {fileName}
               </span>
               {fileBadges}
-              <DropZoneButton onFiles={onFiles} />
+              <ChangeFileButton onFiles={onFiles} />
             </div>
           ) : (
             <DropZone
@@ -76,19 +80,14 @@ export function MidiWorkbench({
               onFiles={onFiles}
             />
           )}
-        </Step>
+          {error && <Alert tone="error" className="mt-5">{error}</Alert>}
+        </Movement>
 
-        {error && <Alert tone="error">{error}</Alert>}
-
-        {/* Step 2 — options */}
         {hasFile && (
-          <Step index={2} label="Shape the sheet">
-            <div className="space-y-5">{optionsSlot}</div>
+          <Movement index={2} title="Shape the sheet">
+            {optionsSlot}
 
-            <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-cobalt-700/25 pt-4">
-              {actionWarning && (
-                <span className="mr-auto text-xs font-semibold text-ochre-300">{actionWarning}</span>
-              )}
+            <div className="mt-9 flex flex-wrap items-center gap-5">
               <Button
                 variant="primary"
                 size="lg"
@@ -98,56 +97,26 @@ export function MidiWorkbench({
               >
                 {actionBusy ? actionBusyLabel : actionLabel}
               </Button>
+              {actionWarning && <span className="text-sm text-ochre-300">{actionWarning}</span>}
             </div>
-          </Step>
+          </Movement>
         )}
 
-        {/* Step 3 — report */}
         {reportSlot && (
-          <Step index={3} label="Review">
+          <Movement index={3} title="Review" rule={false}>
             {reportSlot}
-          </Step>
+          </Movement>
         )}
       </PageContainer>
     </>
   )
 }
 
-/** A numbered card with a gold paint-dot in the gutter. */
-function Step({
-  index,
-  label,
-  children
-}: {
-  index: number
-  label: string
-  children: ReactNode
-}): React.JSX.Element {
-  return (
-    <div className="relative pl-9">
-      <span
-        className={cn(
-          'absolute top-5 left-0 flex h-7 w-7 items-center justify-center rounded-pill',
-          'bg-star-500/20 font-display text-xs font-bold text-star-300 ring-1 ring-star-500/40'
-        )}
-      >
-        {index}
-      </span>
-      <Card>
-        <SectionHeading level={3} title={label} />
-        <div className="mt-4">{children}</div>
-      </Card>
-    </div>
-  )
-}
-
 /** The compact "swap file" affordance shown once a file is already loaded. */
-function DropZoneButton({ onFiles }: { onFiles: MidiWorkbenchProps['onFiles'] }): React.JSX.Element {
+function ChangeFileButton({ onFiles }: { onFiles: MidiWorkbenchProps['onFiles'] }): React.JSX.Element {
   return (
     <label className="cursor-pointer">
-      <span className="inline-flex items-center rounded-tile bg-night-800/80 px-2.5 py-1 text-xs font-semibold text-moon-200 ring-1 ring-cobalt-600/35 hover:bg-night-700/85">
-        Change…
-      </span>
+      <span className="brush-underline text-sm font-semibold text-moon-300 hover:text-star-200">Change…</span>
       <input
         type="file"
         accept=".mid,.midi"
@@ -162,7 +131,13 @@ function DropZoneButton({ onFiles }: { onFiles: MidiWorkbenchProps['onFiles'] })
   )
 }
 
-/** Small labelled grouping used inside `optionsSlot` by both pages. */
+/**
+ * A labelled grouping inside `optionsSlot`.
+ *
+ * The legend was an 11px bold uppercase letterspaced gold label — the same
+ * eyebrow pattern `SectionHeading` dropped. It is now set in the display face
+ * over a hairline, which reads as a subhead instead of a category chip.
+ */
 export function OptionGroup({
   label,
   children,
@@ -173,11 +148,21 @@ export function OptionGroup({
   className?: string
 }): React.JSX.Element {
   return (
-    <fieldset className={cn('space-y-3', className)}>
-      <legend className="mb-2 text-[11px] font-bold tracking-[0.14em] text-star-500 uppercase">
+    <fieldset className={cn('min-w-0', className)}>
+      {/*
+        The visible subhead is a sibling `<div>`, not the `<legend>` itself: a
+        legend is laid out in the fieldset's border gap rather than in normal
+        flow, which makes a full-width rule on it behave unpredictably. The
+        legend stays for the accessible grouping name.
+      */}
+      <legend className="sr-only">{label}</legend>
+      <div
+        aria-hidden="true"
+        className="hairline-top mb-5 pt-2.5 font-display text-base font-medium text-moon-300 italic"
+      >
         {label}
-      </legend>
-      {children}
+      </div>
+      <div className="space-y-5">{children}</div>
     </fieldset>
   )
 }
@@ -185,12 +170,10 @@ export function OptionGroup({
 /** Scrollable checkbox list of MIDI tracks — identical in both pages. */
 export function TrackList({ children }: { children: ReactNode }): React.JSX.Element {
   return (
-    <div className="paint-inset scrollbar-night max-h-52 space-y-1.5 overflow-auto rounded-tile p-2.5">
-      {children}
-    </div>
+    <div className="paint-inset scrollbar-night max-h-52 space-y-2 overflow-auto rounded-tile p-3">{children}</div>
   )
 }
 
 export function TrackBadge({ children }: { children: ReactNode }): React.JSX.Element {
-  return <Badge>{children}</Badge>
+  return <Annotation>{children}</Annotation>
 }

@@ -1,18 +1,19 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import type { GridCol, GridRow, SongMeta } from '@shared/song'
 import type { PlaybackStatus } from '@shared/playback'
 import { DEFAULT_SETTINGS } from '@shared/settings'
 import { PageContainer, PageHeader } from '../../components/layout/Page'
+import { usePlaybackStore } from '../../store/playbackStore'
 import {
   Alert,
-  Badge,
+  Annotation,
   Button,
-  Card,
   Checkbox,
   DropZone,
   EmptyState,
   IconButton,
-  SectionHeading,
+  PaintRule,
+  Plate,
   Slider,
   cn
 } from '../../components/ui'
@@ -54,6 +55,78 @@ function formatMs(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
+/* ---------------------------------------------------------------------------
+ * The two live surfaces.
+ *
+ * Both are `memo`'d and read the playback store directly rather than taking
+ * props, so a note event re-renders these and nothing above them. See
+ * `store/playbackStore.ts` for why that matters.
+ * ------------------------------------------------------------------------ */
+
+const GridPreview = memo(function GridPreview(): React.JSX.Element {
+  const activeCells = usePlaybackStore((s) => s.activeCells)
+
+  return (
+    <Plate>
+      <h3 className="mb-5 font-display text-lg font-medium text-moon-300 italic">Grid</h3>
+      <div className="inline-grid grid-cols-[auto_repeat(5,minmax(0,1fr))] gap-2.5">
+        <span />
+        {GRID_COLS.map((col) => (
+          <span key={col} className="text-center text-[0.65rem] text-moon-500">
+            {col}
+          </span>
+        ))}
+        {GRID_ROWS.flatMap((row) => [
+          <span key={`label-${row}`} className="flex items-center pr-2 font-display text-xs text-moon-500">
+            {row}
+          </span>,
+          ...GRID_COLS.map((col) => {
+            const cellId = `${row}${col}`
+            const active = activeCells.has(cellId)
+            return (
+              <div key={cellId} className="relative flex h-14 w-14 items-center justify-center">
+                {active && <span className="absolute inset-0 animate-halo-breathe rounded-pill bg-star-400/40" />}
+                <div
+                  className={cn(
+                    'relative flex h-full w-full items-center justify-center rounded-pill text-xs font-semibold',
+                    // Only transform/shadow are transitioned. Colour flips
+                    // instantly: a 150ms colour fade never completes inside
+                    // a ~150ms tap, which made struck cells read as rings.
+                    'transition-[transform,box-shadow] duration-100',
+                    active
+                      ? 'animate-star-pop bg-star-400 text-night-950 shadow-star'
+                      : 'bg-night-850/80 text-moon-500 shadow-cell ring-1 ring-cobalt-700/40'
+                  )}
+                >
+                  {cellId}
+                </div>
+              </div>
+            )
+          })
+        ])}
+      </div>
+    </Plate>
+  )
+})
+
+const NoteLog = memo(function NoteLog(): React.JSX.Element | null {
+  const noteLog = usePlaybackStore((s) => s.noteLog)
+  if (noteLog.length === 0) return null
+
+  return (
+    <Plate>
+      <h3 className="mb-4 font-display text-lg font-medium text-moon-300 italic">Note log</h3>
+      <div className="paint-inset scrollbar-night h-32 overflow-auto rounded-tile p-3 font-mono text-xs text-cobalt-300">
+        {noteLog.map((line, i) => (
+          <div key={i}>{line}</div>
+        ))}
+      </div>
+    </Plate>
+  )
+})
+
+/* ------------------------------------------------------------------------ */
+
 export function PlayMusicMode() {
   const [library, setLibrary] = useState<SongMeta[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -62,8 +135,6 @@ export function PlayMusicMode() {
   const [tempoPercent, setTempoPercent] = useState(100)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [countdownSeconds, setCountdownSeconds] = useState(DEFAULT_SETTINGS.countdownSeconds)
-  const [activeCells, setActiveCells] = useState<Set<string>>(new Set())
-  const [noteLog, setNoteLog] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [importing, setImporting] = useState(false)
@@ -83,16 +154,11 @@ export function PlayMusicMode() {
       if (event.type === 'status') {
         setStatus(event.status)
       } else if (event.type === 'note') {
-        const cellId = `${event.row}${event.col}`
-        setActiveCells((prev) => {
-          const next = new Set(prev)
-          if (event.kind === 'down') next.add(cellId)
-          else next.delete(cellId)
-          return next
-        })
-        setNoteLog((prev) => [...prev.slice(-29), `${event.kind} ${cellId} @ ${Math.round(event.timeMs)}ms`])
+        // Straight into the store — this fires ~20x/second and must not
+        // re-render this component.
+        usePlaybackStore.getState().noteEvent(event.kind, event.row, event.col, event.timeMs)
       } else if (event.type === 'ended') {
-        setActiveCells(new Set())
+        usePlaybackStore.getState().releaseAll()
       } else if (event.type === 'error') {
         setError(event.message)
       }
@@ -112,8 +178,7 @@ export function PlayMusicMode() {
 
   async function selectSong(meta: SongMeta): Promise<void> {
     setError(null)
-    setActiveCells(new Set())
-    setNoteLog([])
+    usePlaybackStore.getState().reset()
     setCountdown(null)
     setScrubMs(null)
     try {
@@ -140,13 +205,13 @@ export function PlayMusicMode() {
   async function handleStop(): Promise<void> {
     setCountdown(null)
     setStatus(await window.skyAPI.playbackStop())
-    setActiveCells(new Set())
+    usePlaybackStore.getState().releaseAll()
   }
 
   async function handlePanic(): Promise<void> {
     setCountdown(null)
     setStatus(await window.skyAPI.playbackPanic())
-    setActiveCells(new Set())
+    usePlaybackStore.getState().releaseAll()
   }
 
   async function handleStep(direction: 1 | -1): Promise<void> {
@@ -182,7 +247,7 @@ export function PlayMusicMode() {
         setCountdown(null)
         await window.skyAPI.playbackStop()
         setStatus(IDLE_STATUS)
-        setActiveCells(new Set())
+        usePlaybackStore.getState().reset()
         setSelectedId(null)
       }
       await window.skyAPI.deleteSong(meta.id)
@@ -233,7 +298,7 @@ export function PlayMusicMode() {
     if (scrubMs === null) return
     const targetMs = scrubMs
     setScrubMs(null)
-    setActiveCells(new Set())
+    usePlaybackStore.getState().releaseAll()
     setStatus(await window.skyAPI.playbackSeek(targetMs))
   }
 
@@ -243,22 +308,25 @@ export function PlayMusicMode() {
 
   return (
     <div className="flex h-full">
-      {/* ── Library rail ───────────────────────────────────────────── */}
-      <aside className="paint-panel scrollbar-night flex w-56 shrink-0 flex-col overflow-auto rounded-none border-y-0 border-l-0 p-3 lg:w-72">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="font-display text-sm font-semibold text-moon-100">Library</h2>
-          {library.length > 0 && <Badge tone="gold">{library.length}</Badge>}
+      {/* ── Library index ──────────────────────────────────────────
+          Not a second sidebar: with the masthead carrying navigation, this
+          column is the page's own index of what there is to play. */}
+      <aside className="scrollbar-night flex w-60 shrink-0 flex-col overflow-auto border-r border-cobalt-700/20 px-5 py-7 lg:w-72">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="font-display text-xl font-medium text-moon-100 italic">Library</h2>
+          {library.length > 0 && <Annotation tone="gold">{library.length}</Annotation>}
         </div>
+        <PaintRule className="mt-4" />
 
         {library.length === 0 ? (
           <EmptyState
-            className="px-2 py-6"
-            icon={<IconStar size={26} />}
+            className="px-0 py-8"
+            icon={<IconStar size={24} />}
             title="No songs yet"
             description="Convert or arrange a MIDI, or drop a community sheet below."
           />
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="mt-5 space-y-1">
             {library.map((meta) => {
               const selected = meta.id === selectedId
               return (
@@ -266,22 +334,18 @@ export function PlayMusicMode() {
                   <button
                     onClick={() => void selectSong(meta)}
                     className={cn(
-                      'min-w-0 flex-1 rounded-tile px-2.5 py-2 text-left transition-colors',
-                      selected
-                        ? 'brush-edge bg-cobalt-800/55 text-star-100'
-                        : 'text-moon-200 hover:bg-night-800/60'
+                      'min-w-0 flex-1 py-2 pl-3 text-left transition-colors',
+                      selected ? 'brush-edge text-star-100' : 'text-moon-300 hover:text-moon-50'
                     )}
                   >
-                    <div className="truncate font-display text-sm font-semibold">{meta.title}</div>
-                    {meta.artist && <div className="truncate text-xs text-moon-400">{meta.artist}</div>}
+                    <div className="truncate font-display text-sm font-medium">{meta.title}</div>
+                    {meta.artist && <div className="mt-0.5 truncate text-xs text-moon-500">{meta.artist}</div>}
                   </button>
                   <IconButton
-                    variant="ghost"
-                    size="sm"
                     label={`Delete ${meta.title} from library`}
                     icon={<IconTrash size={15} />}
                     onClick={() => void deleteFromLibrary(meta)}
-                    className="shrink-0 opacity-0 group-hover:opacity-100 hover:!bg-vermilion-700/40 hover:!text-vermilion-400"
+                    className="shrink-0 opacity-0 group-hover:opacity-100 hover:text-vermilion-400"
                   />
                 </li>
               )
@@ -292,7 +356,7 @@ export function PlayMusicMode() {
         <DropZone
           compact
           multiple
-          className="mt-4"
+          className="mt-8"
           accept=".json,.txt"
           busy={importing}
           busyLabel="Importing…"
@@ -309,35 +373,36 @@ export function PlayMusicMode() {
           title="Play Music Mode"
           actions={
             selectedMeta ? (
-              <div className="flex items-center gap-2">
-                {status.dryRun && <Badge tone="gold">Dry run</Badge>}
-                <Badge tone={STATE_TONE[status.state]}>{status.state}</Badge>
+              <div className="flex items-center gap-4">
+                {status.dryRun && <Annotation tone="gold">Dry run</Annotation>}
+                <Annotation tone={STATE_TONE[status.state]}>{status.state}</Annotation>
               </div>
             ) : undefined
           }
         />
 
-        <PageContainer>
+        <PageContainer className="space-y-10">
           {error && <Alert tone="error">{error}</Alert>}
 
           {!selectedMeta ? (
-            <Card padding="none">
-              <EmptyState
-                icon={<IconMusic size={30} />}
-                title="Nothing loaded"
-                description="Pick a song from the library to load it into the player."
-              />
-            </Card>
+            <EmptyState
+              icon={<IconMusic size={30} />}
+              title="Nothing loaded"
+              description="Pick a song from the library to load it into the player."
+            />
           ) : (
             <>
-              {/* Now playing + seek */}
-              <Card>
-                <div className="font-display text-2xl leading-tight font-semibold text-moon-50">
+              {/* Now playing — the song title is the largest thing on the page,
+                  because it is what the page is about. */}
+              <div>
+                <div className="font-display text-4xl leading-tight font-semibold text-moon-50">
                   {selectedMeta.title}
                 </div>
-                <div className="mt-0.5 text-sm text-moon-400">{selectedMeta.artist || 'Unknown artist'}</div>
+                <div className="mt-1.5 font-display text-base text-moon-400 italic">
+                  {selectedMeta.artist || 'Unknown artist'}
+                </div>
 
-                <div className="mt-5">
+                <div className="mt-8">
                   <Slider
                     min={0}
                     max={Math.max(status.durationMs, 1)}
@@ -348,19 +413,16 @@ export function PlayMusicMode() {
                     onKeyUp={() => void commitSeek()}
                     className="w-full"
                   />
-                  <div className="mt-1 flex justify-between font-mono text-xs text-moon-400">
+                  <div className="mt-1.5 flex justify-between font-mono text-xs text-moon-500">
                     <span>{formatMs(displayedElapsedMs)}</span>
                     <span>{formatMs(status.durationMs)}</span>
                   </div>
                 </div>
 
-                {/* Transport */}
-                <div className="mt-5 flex flex-wrap items-center gap-3">
-                  <Button
-                    icon={<IconPrev size={15} />}
-                    onClick={() => void handleStep(-1)}
-                    className="rounded-pill"
-                  >
+                {/* Transport. The play button is the one circle in the app that
+                    earns its shape — and the one thing that earns a glow. */}
+                <div className="mt-8 flex flex-wrap items-center gap-7">
+                  <Button icon={<IconPrev size={15} />} onClick={() => void handleStep(-1)}>
                     Previous
                   </Button>
 
@@ -368,136 +430,66 @@ export function PlayMusicMode() {
                     onClick={() => void handlePlayPause()}
                     disabled={countdown !== null}
                     aria-label={playing ? 'Pause' : 'Play'}
-                    className="flex h-14 w-14 shrink-0 items-center justify-center rounded-pill bg-star-400 text-night-950 shadow-star transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-45"
+                    className="flex h-16 w-16 shrink-0 items-center justify-center rounded-pill bg-star-400 text-night-950 shadow-star transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-45"
                   >
-                    {playing ? <IconPause size={22} /> : <IconPlay size={22} />}
+                    {playing ? <IconPause size={24} /> : <IconPlay size={24} />}
                   </button>
 
-                  <Button
-                    icon={<IconNext size={15} />}
-                    onClick={() => void handleStep(1)}
-                    className="rounded-pill"
-                  >
+                  <Button icon={<IconNext size={15} />} onClick={() => void handleStep(1)}>
                     Next
                   </Button>
 
-                  <Button icon={<IconStop size={14} />} onClick={() => void handleStop()} className="rounded-pill">
+                  <Button icon={<IconStop size={14} />} onClick={() => void handleStop()}>
                     Stop
                   </Button>
 
-                  <span className="ml-auto flex items-center gap-3 border-l border-cobalt-700/30 pl-3">
-                    <Button
-                      variant="danger"
-                      icon={<IconPanic size={15} />}
-                      onClick={() => void handlePanic()}
-                      className="rounded-pill"
-                    >
+                  <span className="ml-auto">
+                    <Button variant="danger" icon={<IconPanic size={15} />} onClick={() => void handlePanic()}>
                       Panic
                     </Button>
                   </span>
                 </div>
-              </Card>
+              </div>
 
-              {/* Countdown */}
               {countdown !== null && (
-                <Card className="text-center">
+                <div className="hairline-top pt-8 text-center">
                   <p className="text-sm text-moon-300">
                     {status.dryRun
                       ? 'Starting dry-run preview…'
                       : 'Switch to the Sky window now — playback starts in'}
                   </p>
-                  <div className="relative mx-auto mt-2 flex h-24 w-24 items-center justify-center">
+                  <div className="relative mx-auto mt-4 flex h-24 w-24 items-center justify-center">
                     <span className="absolute inset-0 animate-halo-breathe rounded-pill bg-star-400/35" />
-                    <span className="relative font-display text-5xl font-semibold text-star-300">
-                      {countdown}
-                    </span>
+                    <span className="relative font-display text-5xl font-semibold text-star-300">{countdown}</span>
                   </div>
-                  <Button variant="ghost" size="sm" className="mt-2" onClick={() => setCountdown(null)}>
+                  <Button variant="ghost" size="sm" className="mt-4" onClick={() => setCountdown(null)}>
                     Cancel
                   </Button>
-                </Card>
+                </div>
               )}
 
-              {/* Options */}
-              <Card>
-                <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-                  <Checkbox
-                    checked={dryRun}
-                    onCheckedChange={(checked) => void handleDryRunChange(checked)}
-                    label="Dry run"
-                    hint="Preview only — no real keystrokes are sent to the game."
+              <div className="hairline-top flex flex-wrap items-center gap-x-12 gap-y-5 pt-8">
+                <Checkbox
+                  checked={dryRun}
+                  onCheckedChange={(checked) => void handleDryRunChange(checked)}
+                  label="Dry run"
+                  hint="Preview only — no real keystrokes are sent to the game."
+                />
+                <label className="flex items-center gap-4 text-sm text-moon-200">
+                  <span className="smallcaps text-[0.82rem]">Tempo</span>
+                  <Slider
+                    min={50}
+                    max={150}
+                    value={tempoPercent}
+                    onChange={(e) => void handleTempoChange(Number(e.target.value))}
+                    className="w-40"
                   />
-                  <label className="flex items-center gap-3 text-sm font-semibold text-moon-200">
-                    Tempo
-                    <Slider
-                      min={50}
-                      max={150}
-                      value={tempoPercent}
-                      onChange={(e) => void handleTempoChange(Number(e.target.value))}
-                      className="w-40"
-                    />
-                    <span className="w-11 text-right font-mono text-xs text-star-300">{tempoPercent}%</span>
-                  </label>
-                </div>
-              </Card>
+                  <span className="w-11 text-right font-mono text-xs text-star-300">{tempoPercent}%</span>
+                </label>
+              </div>
 
-              {/* The 15-key grid — the showpiece. */}
-              <Card>
-                <SectionHeading level={3} eyebrow="Live" title="Grid preview" />
-                <div className="mt-4 inline-grid grid-cols-[auto_repeat(5,minmax(0,1fr))] gap-2">
-                  <span />
-                  {GRID_COLS.map((col) => (
-                    <span key={col} className="text-center text-[10px] font-bold text-moon-500">
-                      {col}
-                    </span>
-                  ))}
-                  {GRID_ROWS.flatMap((row) => [
-                    <span
-                      key={`label-${row}`}
-                      className="flex items-center pr-1 font-display text-xs font-bold text-moon-500"
-                    >
-                      {row}
-                    </span>,
-                    ...GRID_COLS.map((col) => {
-                      const cellId = `${row}${col}`
-                      const active = activeCells.has(cellId)
-                      return (
-                        <div key={cellId} className="relative flex h-14 w-14 items-center justify-center">
-                          {active && (
-                            <span className="absolute inset-0 animate-halo-breathe rounded-pill bg-star-400/40" />
-                          )}
-                          <div
-                            className={cn(
-                              'relative flex h-full w-full items-center justify-center rounded-pill text-xs font-semibold',
-                              // Only transform/shadow are transitioned. Colour flips
-                              // instantly: a 150ms colour fade never completes inside
-                              // a ~150ms tap, which made struck cells read as rings.
-                              'transition-[transform,box-shadow] duration-100',
-                              active
-                                ? 'animate-star-pop bg-star-400 text-night-950 shadow-star'
-                                : 'bg-night-850/85 text-moon-500 shadow-cell ring-1 ring-cobalt-700/45'
-                            )}
-                          >
-                            {cellId}
-                          </div>
-                        </div>
-                      )
-                    })
-                  ])}
-                </div>
-              </Card>
-
-              {/* Note log */}
-              {noteLog.length > 0 && (
-                <Card>
-                  <SectionHeading level={3} eyebrow="Trace" title="Note log" />
-                  <div className="paint-inset scrollbar-night mt-3 h-32 overflow-auto rounded-tile p-2.5 font-mono text-xs text-cobalt-300">
-                    {noteLog.map((line, i) => (
-                      <div key={i}>{line}</div>
-                    ))}
-                  </div>
-                </Card>
-              )}
+              <GridPreview />
+              <NoteLog />
             </>
           )}
         </PageContainer>

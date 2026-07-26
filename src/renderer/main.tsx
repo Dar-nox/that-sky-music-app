@@ -7,6 +7,9 @@ import App from './App'
 // `full.css` is the Fraunces axis bundle that carries SOFT/WONK — the axes
 // globals.css sets on headings.
 import '@fontsource-variable/fraunces/full.css'
+// The italic face carries the section titles. Fraunces has a real italic, so
+// this avoids Chromium synthesising an oblique — which looks wrong on a serif.
+import '@fontsource-variable/fraunces/full-italic.css'
 import '@fontsource-variable/nunito/index.css'
 import './globals.css'
 

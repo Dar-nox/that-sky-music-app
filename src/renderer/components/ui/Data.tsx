@@ -3,15 +3,33 @@ import { cn } from './cn'
 
 export type Tone = 'neutral' | 'good' | 'warn' | 'bad' | 'gold'
 
-const BADGE_TONES: Record<Tone, string> = {
-  neutral: 'border-cobalt-700/40 bg-night-900/70 text-moon-300',
-  good: 'border-cypress-500/45 bg-cypress-800/60 text-cypress-400',
-  warn: 'border-ochre-500/45 bg-ochre-600/20 text-ochre-300',
-  bad: 'border-vermilion-600/45 bg-vermilion-700/25 text-vermilion-400',
-  gold: 'border-star-500/50 bg-star-700/25 text-star-300'
+const TONE_TEXT: Record<Tone, string> = {
+  neutral: 'text-moon-200',
+  good: 'text-cypress-400',
+  warn: 'text-ochre-300',
+  bad: 'text-vermilion-400',
+  gold: 'text-star-300'
 }
 
-export function Badge({
+const TONE_FILL: Record<Tone, string> = {
+  neutral: 'bg-cobalt-600',
+  good: 'bg-cypress-500',
+  warn: 'bg-ochre-400',
+  bad: 'bg-vermilion-500',
+  gold: 'bg-star-400'
+}
+
+/**
+ * A short qualifier attached to something else: a track's note count, a key's
+ * fit percentage, the playback state.
+ *
+ * This replaced `Badge`. A bordered, tinted, rounded-full pill turns every
+ * incidental fact into a UI object competing for attention, and a screen with
+ * nine of them is the most reliable sign of a generated interface. Small caps
+ * in the display face reads as an annotation in the margin, which is what these
+ * actually are — so colour is reserved for the ones that mean something.
+ */
+export function Annotation({
   tone = 'neutral',
   children,
   className
@@ -21,53 +39,53 @@ export function Badge({
   className?: string
 }): React.JSX.Element {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap',
-        BADGE_TONES[tone],
-        className
-      )}
-    >
+    <span className={cn('smallcaps text-[0.8rem] whitespace-nowrap', TONE_TEXT[tone], className)}>
       {children}
     </span>
   )
 }
 
-const STAT_TONES: Record<Tone, string> = {
-  neutral: 'text-moon-100',
-  good: 'text-cypress-400',
-  warn: 'text-ochre-300',
-  bad: 'text-vermilion-400',
-  gold: 'text-star-300'
-}
-
-export function StatTile({
+/**
+ * One number from a report, set as a figure: the value at editorial scale in
+ * the display face, its caption small underneath.
+ *
+ * This replaced `StatTile`. Eleven bordered tiles in a three-column grid — the
+ * Arranger's old report — is a bento by any other name; unboxed figures let a
+ * report be read as a paragraph of numbers rather than scanned as a dashboard.
+ */
+export function Figure({
   label,
   value,
   sub,
   tone = 'neutral',
   className
 }: {
-  label: string
+  label: ReactNode
   value: ReactNode
   sub?: ReactNode
   tone?: Tone
   className?: string
 }): React.JSX.Element {
   return (
-    <div className={cn('paint-inset rounded-tile px-3 py-2.5', className)}>
-      <div className="text-[10px] font-bold tracking-[0.1em] text-moon-500 uppercase">{label}</div>
-      <div className={cn('font-display text-xl leading-tight font-semibold', STAT_TONES[tone])}>{value}</div>
-      {sub && <div className="mt-0.5 text-[11px] text-moon-400">{sub}</div>}
+    <div className={cn('min-w-0', className)}>
+      <div className={cn('font-display text-[1.75rem] leading-none font-semibold', TONE_TEXT[tone])}>
+        {value}
+      </div>
+      <div className="mt-1.5 text-[0.8rem] leading-snug text-moon-400">{label}</div>
+      {sub && <div className="mt-0.5 text-[0.7rem] leading-snug text-moon-500">{sub}</div>}
     </div>
   )
 }
 
 /**
- * The stacked "brush bar" used by both conversion reports — one horizontal band
- * split proportionally, so the shape of a conversion is readable at a glance.
+ * The conversion report's proportions as one flat painted band, with the
+ * breakdown set as type beneath it.
+ *
+ * Was `SegmentedProgress`: a rounded-full bar with a row of coloured legend
+ * dots. The dots duplicated information the labels already carried, and the pill
+ * rounding fought every other edge on the page.
  */
-export function SegmentedProgress({
+export function PaintedBar({
   segments,
   className
 }: {
@@ -75,32 +93,24 @@ export function SegmentedProgress({
   className?: string
 }): React.JSX.Element {
   const total = segments.reduce((sum, s) => sum + s.value, 0)
-  const fills: Record<Tone, string> = {
-    neutral: 'bg-cobalt-600',
-    good: 'bg-cypress-500',
-    warn: 'bg-ochre-400',
-    bad: 'bg-vermilion-500',
-    gold: 'bg-star-400'
-  }
 
   return (
-    <div className={cn('space-y-2', className)}>
-      <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-pill bg-night-950/80">
+    <div className={cn('space-y-2.5', className)}>
+      <div className="flex h-2 w-full overflow-hidden bg-night-950/70">
         {segments.map((segment) => (
           <div
             key={segment.label}
             title={`${segment.label}: ${segment.value}`}
-            className={cn('h-full first:rounded-l-pill last:rounded-r-pill', fills[segment.tone])}
+            className={cn('h-full', TONE_FILL[segment.tone])}
             style={{ width: total > 0 ? `${(segment.value / total) * 100}%` : '0%' }}
           />
         ))}
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1">
+      <div className="flex flex-wrap gap-x-5 gap-y-1">
         {segments.map((segment) => (
-          <span key={segment.label} className="flex items-center gap-1.5 text-[11px] text-moon-400">
-            <span className={cn('h-2 w-2 rounded-pill', fills[segment.tone])} />
+          <Annotation key={segment.label} tone={segment.tone}>
             {segment.label}
-          </span>
+          </Annotation>
         ))}
       </div>
     </div>
@@ -134,14 +144,14 @@ export function KeyCap({
       onClick={onClick}
       aria-label={ariaLabel}
       className={cn(
-        'flex h-14 w-14 flex-col items-center justify-center rounded-tile text-xs font-semibold transition-colors',
+        'flex h-14 w-14 flex-col items-center justify-center rounded-tile text-xs transition-colors',
         listening
-          ? 'animate-pulse bg-star-500 text-night-950 ring-2 ring-star-200'
-          : 'bg-night-800/85 text-moon-200 shadow-cell ring-1 ring-cobalt-700/40 hover:bg-night-700/85 hover:ring-cobalt-500/50',
+          ? 'animate-pulse bg-star-400 text-night-950'
+          : 'bg-night-900/80 text-moon-300 shadow-cell ring-1 ring-cobalt-700/35 hover:bg-night-800/85 hover:text-moon-100',
         className
       )}
     >
-      <span className="opacity-55">{id}</span>
+      <span className="text-[0.65rem] opacity-50">{id}</span>
       <span className="font-display text-sm font-semibold">{listening ? '…' : value}</span>
     </button>
   )

@@ -67,32 +67,37 @@
   --font-display: 'Fraunces Variable', ui-serif, Georgia, serif;
   --font-sans: 'Nunito Variable', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
 
-  /* Radii */
-  --radius-tile: 0.875rem;
-  --radius-card: 1.25rem;
+  /* Radii. Deliberately small: a painting has no 20px corner radius, and the
+     uniform pill/card rounding was a large part of what made this read as a
+     generated dashboard. Only genuinely circular things stay circular. */
+  --radius-tile: 0.25rem;
+  --radius-card: 0.5rem;
   --radius-pill: 9999px;
 
-  /* Shadows */
-  --shadow-halo: 0 0 0 1px rgb(61 119 214 / 0.18), 0 18px 40px -18px rgb(6 10 27 / 0.9);
-  --shadow-canvas: inset 0 1px 0 0 rgb(255 252 242 / 0.06);
+  /* Shadows. The broad coloured glows are gone — light in this palette comes
+     from the stars and the moon, so only things that *are* stars glow. */
+  --shadow-canvas: inset 0 1px 0 0 rgb(255 252 242 / 0.05);
   --shadow-star: 0 0 18px 2px rgb(244 201 93 / 0.45), 0 0 44px 10px rgb(244 201 93 / 0.16);
   --shadow-cell: inset 0 -2px 6px rgb(6 10 27 / 0.55);
 
-  /* Motion */
+  /* Motion.
+     Every background animation here must stay translate/rotate/opacity only.
+     A `scale` keyframe forces the filtered background layers to re-rasterize
+     when it settles, which is the whole cost StarryBackground exists to avoid. */
   --ease-brush: cubic-bezier(0.42, 0, 0.24, 1);
   --animate-drift: drift 64s var(--ease-brush) infinite alternate;
   --animate-drift-slow: drift-slow 96s var(--ease-brush) infinite alternate;
-  --animate-swirl: swirl 240s linear infinite;
+  --animate-sway: sway 150s var(--ease-brush) infinite alternate;
   --animate-twinkle: twinkle 5.5s var(--ease-brush) infinite;
   --animate-star-pop: star-pop 180ms var(--ease-brush) both;
   --animate-halo-breathe: halo-breathe 3.2s var(--ease-brush) infinite;
 
   @keyframes drift {
     from {
-      transform: translate3d(0, 0, 0) scale(1);
+      transform: translate3d(0, 0, 0);
     }
     to {
-      transform: translate3d(-2.2%, 1.4%, 0) scale(1.035);
+      transform: translate3d(-2.2%, 1.4%, 0);
     }
   }
   @keyframes drift-slow {
@@ -103,9 +108,15 @@
       transform: translate3d(1.8%, -1.2%, 0);
     }
   }
-  @keyframes swirl {
+  /* A sway, not a revolution. A sky that turns a full circle reads as a
+     turntable; one that leans back and forth reads as weather. It also needs
+     far less layer oversizing to keep its corners covered. */
+  @keyframes sway {
+    from {
+      transform: rotate(-5deg);
+    }
     to {
-      transform: rotate(360deg);
+      transform: rotate(5deg);
     }
   }
   @keyframes twinkle {
@@ -142,26 +153,30 @@
 }
 
 /* ============================================================================
-   Custom utilities — the painterly surface treatments. These replace the old
-   `rounded border border-slate-700 bg-slate-800/50` recipe that was retyped
-   across every page.
+   Custom utilities.
+
+   The governing rule of this layout: content sits *on* the painting. A surface
+   is a deliberate exception made only where legibility demands it, not the
+   default container for every group of related controls. There is therefore
+   exactly one panel utility, and pages are expected to use it once or twice.
    ========================================================================= */
 
-/* The standard raised panel: a canvas-toned wash with a lit top edge. */
-@utility paint-panel {
-  background-image: linear-gradient(158deg, rgb(20 30 71 / 0.82), rgb(11 18 48 / 0.88));
-  border: 1px solid rgb(61 119 214 / 0.22);
-  box-shadow: var(--shadow-halo), var(--shadow-canvas);
+/* The one enclosing surface. Flat canvas tone, no gradient, no border and no
+   radius — `Plate` draws its own uneven painted edge as an inline <svg>, since
+   the renderer's CSP (`default-src 'self'`) rules out a data: URI mask. */
+@utility paint-plate {
+  background-color: rgb(9 15 38 / 0.72);
+  box-shadow: var(--shadow-canvas);
 }
 
-/* Recessed surfaces: note log, track lists, path chips, keycap boards. */
+/* Recessed surfaces: note log, track lists, keycap boards. */
 @utility paint-inset {
-  background-color: rgb(6 10 27 / 0.66);
-  border: 1px solid rgb(61 119 214 / 0.14);
-  box-shadow: inset 0 2px 8px rgb(0 0 0 / 0.35);
+  background-color: rgb(6 10 27 / 0.6);
+  border: 1px solid rgb(61 119 214 / 0.12);
+  box-shadow: inset 0 2px 8px rgb(0 0 0 / 0.3);
 }
 
-/* The gold "wet paint" stroke marking an active nav item or selected song. */
+/* The gold "wet paint" stroke marking a selected song in the library index. */
 @utility brush-edge {
   position: relative;
 
@@ -181,6 +196,51 @@
       transparent
     );
   }
+}
+
+/* A brush stroke *under* type — the nav's active mark and the secondary button
+   affordance. The uneven alpha stops fake a loaded brush that runs out at both
+   ends, so it never reads as a 1px CSS underline. Height is what animates;
+   it is a pseudo-element, so this costs no layout. */
+@utility brush-underline {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: -0.15em;
+    bottom: -0.28em;
+    height: 2px;
+    background-image: linear-gradient(
+      to right,
+      transparent,
+      rgb(232 178 58 / 0.35) 8%,
+      var(--color-star-400) 34%,
+      var(--color-star-300) 58%,
+      var(--color-star-500) 80%,
+      transparent
+    );
+    transition: height 140ms var(--ease-brush);
+  }
+
+  &:hover::after {
+    height: 4px;
+  }
+}
+
+/* The rule between figures in a report. A hairline, not a panel border. */
+@utility hairline-top {
+  border-top: 1px solid rgb(207 195 166 / 0.13);
+}
+
+/* Small caps in the display face — the app's replacement for the pill badge
+   and the uppercase letterspaced eyebrow, which were the two loudest
+   generated-dashboard tells in the old UI. */
+@utility smallcaps {
+  font-family: var(--font-display);
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.08em;
+  font-weight: 600;
 }
 
 @utility scrollbar-night {
@@ -231,6 +291,13 @@
       'WONK' 1,
       'opsz' 36;
     letter-spacing: -0.012em;
+    text-wrap: balance;
+  }
+
+  /* Editorial body measure. Prose in this layout is unboxed, so it needs a real
+     line length limit of its own rather than inheriting a card's width. */
+  p {
+    text-wrap: pretty;
   }
 
   ::selection {
