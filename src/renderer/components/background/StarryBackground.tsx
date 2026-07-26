@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import type { BackgroundQuality } from '@shared/settings'
-import { bakeLayer } from './bake'
+import { bakeLayers, type BakedLayer } from './bake'
 import {
   DEEP_RIBBONS,
   MID_RIBBONS,
@@ -466,11 +466,13 @@ const MOVING_COATS = [
 ] as const
 
 /**
- * Bakes the moving coats once and hands back their blob URLs.
+ * Bakes the moving coats and hands back their blob URLs.
  *
  * Runs in an effect rather than during render because it touches
  * `getComputedStyle` and `URL.createObjectURL`, and because the first paint
  * should be the still painting — not a blank sky while three SVGs serialize.
+ * It is asynchronous because the serializer is dynamically imported; see
+ * `bake.ts` for why that matters.
  */
 function useBakedCoats(enabled: boolean): string[] | null {
   const [urls, setUrls] = useState<string[] | null>(null)
@@ -481,10 +483,30 @@ function useBakedCoats(enabled: boolean): string[] | null {
       return
     }
 
-    const baked = MOVING_COATS.map((coat) => bakeLayer(coat.marks, 1200, 800))
-    setUrls(baked.map((layer) => layer.url))
+    let cancelled = false
+    let baked: BakedLayer[] = []
+
+    bakeLayers(
+      MOVING_COATS.map((coat) => coat.marks),
+      1200,
+      800
+    )
+      .then((layers) => {
+        // Quality can change again before the import resolves; the URLs would
+        // otherwise leak with no one holding a reference to revoke them.
+        if (cancelled) {
+          layers.forEach((layer) => layer.revoke())
+          return
+        }
+        baked = layers
+        setUrls(layers.map((layer) => layer.url))
+      })
+      .catch(() => {
+        // Stay on the still painting — it is the same artwork, just not moving.
+      })
 
     return () => {
+      cancelled = true
       setUrls(null)
       baked.forEach((layer) => layer.revoke())
     }

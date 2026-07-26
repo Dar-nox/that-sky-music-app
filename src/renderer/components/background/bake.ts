@@ -1,5 +1,3 @@
-import { renderToStaticMarkup } from 'react-dom/server'
-
 /**
  * Bakes a piece of the painting into a standalone SVG image, handed back as a
  * `blob:` URL for a layer's `background-image`.
@@ -32,6 +30,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
  *     gradients defined in the page, so every layer carries its own `<defs>`.
  *   - It also has no CSS custom properties, so `var(--color-…)` is resolved
  *     against the live document before serializing.
+ *
+ * `react-dom/server` is pulled in by dynamic `import()` rather than at module
+ * scope. It is around half a megabyte of the renderer bundle, and the default
+ * background quality is `still`, which never bakes anything — so most sessions
+ * should never load or parse it at all. Keep it dynamic.
  */
 
 /** Resolves the theme's custom properties, which don't exist inside the baked
@@ -55,22 +58,32 @@ export interface BakedLayer {
 }
 
 /**
- * @param content  The marks for this coat. Must include its own `<defs>`.
- * @param width    Intrinsic size of the baked image, in the painting's own
- *                 coordinates. The layer scales it with `background-size: cover`,
- *                 and because the baked file is still SVG this costs no sharpness.
+ * Bakes every coat in one pass, so the serializer is imported once.
+ *
+ * @param coats   The marks for each coat. Each must include its own `<defs>`.
+ * @param width   Intrinsic size of the baked images, in the painting's own
+ *                coordinates. Layers scale them with `background-size: cover`,
+ *                and because the baked files are still SVG this costs no
+ *                sharpness — the browser rasterizes at whatever size it needs.
  */
-export function bakeLayer(content: React.JSX.Element, width: number, height: number): BakedLayer {
+export async function bakeLayers(
+  coats: readonly React.JSX.Element[],
+  width: number,
+  height: number
+): Promise<BakedLayer[]> {
+  const { renderToStaticMarkup } = await import('react-dom/server')
   const resolveVar = makeVarResolver()
 
-  const markup = renderToStaticMarkup(content).replace(/var\(\s*(--[a-z0-9-]+)\s*\)/gi, (_, name: string) =>
-    resolveVar(name)
-  )
+  return coats.map((content) => {
+    const markup = renderToStaticMarkup(content).replace(/var\(\s*(--[a-z0-9-]+)\s*\)/gi, (_, name: string) =>
+      resolveVar(name)
+    )
 
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" ` +
-    `viewBox="0 0 ${width} ${height}">${markup}</svg>`
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" ` +
+      `viewBox="0 0 ${width} ${height}">${markup}</svg>`
 
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
-  return { url, revoke: () => URL.revokeObjectURL(url) }
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
+    return { url, revoke: () => URL.revokeObjectURL(url) }
+  })
 }
